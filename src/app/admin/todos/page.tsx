@@ -14,7 +14,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
 import { todos as initialTodos, Todo } from '@/lib/data';
 import { cn } from '@/lib/utils';
-import { format, isToday, isPast, isFuture, startOfToday, parseISO } from 'date-fns';
+import { format, isToday, isPast, isFuture, startOfToday, parseISO, isEqual } from 'date-fns';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
 import { Calendar } from '@/components/ui/calendar';
@@ -33,17 +33,32 @@ import {
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
+  AlertDialogTrigger,
 } from "@/components/ui/alert-dialog"
+import {
+  Dialog,
+  DialogClose,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from '@/components/ui/dialog';
+import { Label } from '@/components/ui/label';
 
 type FilterType = 'today' | 'overdue' | 'all';
 
 export default function TodosPage() {
   const [todos, setTodos] = useState<Todo[]>(initialTodos);
-  const [newTodo, setNewTodo] = useState('');
   const [filter, setFilter] = useState<FilterType>('today');
   const [selectedDate, setSelectedDate] = useState<Date | undefined>(new Date());
   const [isDeleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [isNewTaskDialogOpen, setNewTaskDialogOpen] = useState(false);
+  const [isConflictDialogOpen, setConflictDialogOpen] = useState(false);
   const [todoToDelete, setTodoToDelete] = useState<Todo | null>(null);
+  const [conflictingTasks, setConflictingTasks] = useState<Todo[]>([]);
+  const [newTask, setNewTask] = useState({ title: '', dateTime: '' });
   const [currentTime, setCurrentTime] = useState('');
 
   useEffect(() => {
@@ -61,22 +76,39 @@ export default function TodosPage() {
     );
   };
 
-  const handleAddTodo = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (newTodo.trim()) {
-      const newTodoItem: Todo = {
-        id: Date.now(),
-        task: newTodo.trim(),
-        completed: false,
-        priority: 'medium',
-        dueDate: (selectedDate || new Date()).toISOString(),
-        category: 'Uncategorized',
-        subtasks: []
-      };
-      setTodos([newTodoItem, ...todos]);
-      setNewTodo('');
+  const checkForConflicts = (newDateTime: Date) => {
+    const conflicts = todos.filter(todo => isEqual(parseISO(todo.dueDate), newDateTime));
+    if (conflicts.length > 0) {
+      setConflictingTasks(conflicts);
+      setConflictDialogOpen(true);
+      return true;
     }
+    return false;
   };
+
+  const handleAddNewTask = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newTask.title.trim() || !newTask.dateTime) return;
+
+    const newDateTime = new Date(newTask.dateTime);
+    if (checkForConflicts(newDateTime)) {
+      return; // Stop if there's a conflict
+    }
+    
+    const newTodoItem: Todo = {
+      id: Date.now(),
+      task: newTask.title.trim(),
+      completed: false,
+      priority: 'medium',
+      dueDate: newDateTime.toISOString(),
+      category: 'Uncategorized',
+      subtasks: []
+    };
+    setTodos([newTodoItem, ...todos]);
+    setNewTask({ title: '', dateTime: '' });
+    setNewTaskDialogOpen(false);
+  };
+
 
   const handleOpenDeleteDialog = (todo: Todo) => {
     setTodoToDelete(todo);
@@ -92,7 +124,6 @@ export default function TodosPage() {
   };
 
   const filteredTodos = useMemo(() => {
-    const today = startOfToday();
     let filtered = todos;
 
     if (filter === 'today') {
@@ -106,7 +137,6 @@ export default function TodosPage() {
   }, [todos, filter]);
 
   const stats = useMemo(() => {
-    const today = startOfToday();
     const tasksToday = todos.filter(todo => isToday(parseISO(todo.dueDate)));
     const overdueTasks = todos.filter(todo => isPast(parseISO(todo.dueDate)) && !isToday(parseISO(todo.dueDate)) && !todo.completed);
     const completedToday = tasksToday.filter(todo => todo.completed);
@@ -150,7 +180,7 @@ export default function TodosPage() {
               <CalendarIcon /> Calendar
             </CardTitle>
           </CardHeader>
-          <CardContent className="flex justify-center">
+          <CardContent className="flex flex-col items-center">
             <Calendar
               mode="single"
               selected={selectedDate}
@@ -160,6 +190,45 @@ export default function TodosPage() {
                 task: 'bg-primary/20 rounded-full'
               }}
             />
+            <Dialog open={isNewTaskDialogOpen} onOpenChange={setNewTaskDialogOpen}>
+              <DialogTrigger asChild>
+                <Button className="mt-4 w-full"><PlusCircle className="mr-2"/>New Task</Button>
+              </DialogTrigger>
+              <DialogContent>
+                <DialogHeader>
+                  <DialogTitle>Create a New Task</DialogTitle>
+                  <DialogDescription>
+                    Fill in the details below to add a new task to your list.
+                  </DialogDescription>
+                </DialogHeader>
+                <form onSubmit={handleAddNewTask} className="space-y-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="task-title">Task Title</Label>
+                    <Input 
+                      id="task-title"
+                      placeholder="e.g., Follow up with the design team"
+                      value={newTask.title}
+                      onChange={(e) => setNewTask(prev => ({...prev, title: e.target.value}))}
+                    />
+                  </div>
+                   <div className="space-y-2">
+                    <Label htmlFor="task-datetime">Date and Time</Label>
+                    <Input 
+                      id="task-datetime"
+                      type="datetime-local"
+                      value={newTask.dateTime}
+                      onChange={(e) => setNewTask(prev => ({...prev, dateTime: e.target.value}))}
+                    />
+                  </div>
+                  <DialogFooter>
+                    <DialogClose asChild>
+                      <Button type="button" variant="outline">Cancel</Button>
+                    </DialogClose>
+                    <Button type="submit">Add Task</Button>
+                  </DialogFooter>
+                </form>
+              </DialogContent>
+            </Dialog>
           </CardContent>
         </Card>
       </div>
@@ -184,16 +253,8 @@ export default function TodosPage() {
             </div>
           </CardHeader>
           <CardContent className="space-y-3">
-            <form onSubmit={handleAddTodo} className="flex gap-2">
-              <Input 
-                placeholder="Add a new task for today..."
-                value={newTodo}
-                onChange={(e) => setNewTodo(e.target.value)}
-              />
-              <Button type="submit" size="icon"><PlusCircle className="h-4 w-4" /></Button>
-            </form>
              <Separator />
-            <div className="space-y-3 h-[calc(100vh-22rem)] overflow-y-auto pr-2">
+            <div className="space-y-3 h-[calc(100vh-20rem)] overflow-y-auto pr-2">
               {filteredTodos.length > 0 ? filteredTodos.map((todo) => (
                 <div key={todo.id} className={cn(
                     "flex items-start gap-3 p-3 rounded-md bg-secondary/30 border-l-4",
@@ -215,9 +276,11 @@ export default function TodosPage() {
                     </label>
                     <div className="flex items-center gap-2 text-xs text-muted-foreground mt-1">
                        <span className={cn(
+                          'flex items-center gap-1',
                           isPast(parseISO(todo.dueDate)) && !isToday(parseISO(todo.dueDate)) && !todo.completed && 'text-red-400 font-semibold'
                        )}>
-                        {format(parseISO(todo.dueDate), "MMM d")}
+                        <Clock className="h-3 w-3"/>
+                        {format(parseISO(todo.dueDate), "MMM d, p")}
                        </span>
                        <Badge className={cn("px-1.5 py-0", categoryColors[todo.category] || categoryColors.Uncategorized)}>{todo.category}</Badge>
                     </div>
@@ -322,6 +385,31 @@ export default function TodosPage() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      <AlertDialog open={isConflictDialogOpen} onOpenChange={setConflictDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Scheduling Conflict Detected</AlertDialogTitle>
+            <AlertDialogDescription>
+              There is already a task scheduled for this time. Please choose a different time.
+              <Separator className="my-4"/>
+              <h4 className="font-semibold mb-2">Existing Task:</h4>
+              {conflictingTasks.map(task => (
+                <div key={task.id} className="p-2 border rounded-md">
+                    <p className="font-medium">{task.task}</p>
+                    <p className="text-sm text-muted-foreground">{format(parseISO(task.dueDate), 'PPP p')}</p>
+                </div>
+              ))}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogAction onClick={() => setConflictDialogOpen(false)}>OK</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
     </div>
   );
 }
+
+    
