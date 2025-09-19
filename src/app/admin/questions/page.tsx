@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import {
   Table,
   TableBody,
@@ -58,6 +58,7 @@ export default function QuestionsPage() {
   const [isDeleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [questionToDelete, setQuestionToDelete] = useState<Question | null>(null);
   const [newQuestion, setNewQuestion] = useState<Omit<Question, 'id'>>({ question: '', answer: '', category: '', remarks: '' });
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const handleOpenCreateDialog = () => {
     setSelectedQuestion(null);
@@ -101,6 +102,53 @@ export default function QuestionsPage() {
     setCreateDialogOpen(false);
   };
 
+  const handleUploadClick = () => {
+    fileInputRef.current?.click();
+  };
+
+  const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (file) {
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        const text = e.target?.result as string;
+        const lines = text.split('\n');
+        const headers = lines[0].split(',').map(h => h.trim().toLowerCase().replace(/"/g, ''));
+        const newQuestions: Question[] = [];
+        
+        let maxId = Math.max(...questions.map(q => q.id), 0);
+
+        lines.slice(1).forEach(line => {
+          if (line.trim() === '') return;
+          const data = line.split(',').map(d => d.trim().replace(/"/g, ''));
+          const questionObj: any = {};
+          headers.forEach((header, index) => {
+            questionObj[header] = data[index] || '';
+          });
+          
+          newQuestions.push({
+            id: questionObj.id ? parseInt(questionObj.id) : ++maxId,
+            category: questionObj.category || '',
+            question: questionObj.question || '',
+            answer: questionObj.answer || '',
+            remarks: questionObj.remarks || '',
+          });
+        });
+
+        // Simple de-duplication based on ID
+        const combined = [...questions, ...newQuestions];
+        const uniqueQuestions = Array.from(new Map(combined.map(q => [q.id, q])).values());
+        setQuestions(uniqueQuestions);
+      };
+      reader.readAsText(file);
+    }
+     // Reset file input
+    if(event.target) {
+        event.target.value = '';
+    }
+  };
+
+
   return (
     <>
       <Card>
@@ -116,10 +164,17 @@ export default function QuestionsPage() {
               </CardDescription>
             </div>
             <div className="flex gap-2">
-              <Button variant="outline">
+              <Button variant="outline" onClick={handleUploadClick}>
                 <Upload className="mr-2 h-4 w-4" />
                 Upload CSV
               </Button>
+              <input 
+                type="file" 
+                ref={fileInputRef}
+                className="hidden"
+                accept=".csv"
+                onChange={handleFileChange}
+              />
               <Button onClick={handleOpenCreateDialog}>
                 <PlusCircle className="mr-2 h-4 w-4" />
                 New Question
