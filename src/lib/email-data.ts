@@ -19,7 +19,7 @@ export const campaigns: Campaign[] = [
     body: '## Discover a new way to learn!\n\nWe are excited to announce our latest feature: voice-activated lessons. You can now learn on the go, completely hands-free. Try it out today!',
     status: 'Sent',
     recipients: 'all',
-    date: new Date('2024-07-20T10:00:00Z').toISOString(),
+    date: '2024-07-20T10:00:00.000Z',
     analytics: {
       recipients: 1257,
       openRate: 45,
@@ -32,7 +32,7 @@ export const campaigns: Campaign[] = [
     body: '### Keep the momentum going!\n\nJust a friendly reminder to continue your learning journey. A few minutes a day can make a big difference. Log in now and pick up where you left off.',
     status: 'Scheduled',
     recipients: 'not-started',
-    date: new Date('2024-08-01T10:00:00Z').toISOString(), 
+    date: '2024-08-01T10:00:00.000Z', 
   },
   {
     id: 'camp_3',
@@ -48,7 +48,7 @@ export const campaigns: Campaign[] = [
     body: '### Amazing work!\n\nYou recently scored over 80% on an exam. Keep up the excellent effort!',
     status: 'Sent',
     recipients: 'score-gt-80',
-    date: new Date('2024-07-18T15:30:00Z').toISOString(),
+    date: '2024-07-18T15:30:00.000Z',
     analytics: {
       recipients: 56,
       openRate: 78,
