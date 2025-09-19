@@ -9,7 +9,7 @@ import {
   CardTitle,
 } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Settings as SettingsIcon, KeyRound, Save, Mail, TestTube2, AlertTriangle, CheckCircle2 } from 'lucide-react';
+import { Settings as SettingsIcon, KeyRound, Save, Mail, TestTube2, AlertTriangle, CheckCircle2, Loader2 } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Separator } from '@/components/ui/separator';
@@ -32,6 +32,8 @@ import {
 } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
+import { useToast } from '@/hooks/use-toast';
+import { testEmailService } from '@/ai/flows/test-email-service';
 
 type ServiceStatus = 'operational' | 'degraded' | 'not-configured' | 'disabled';
 type EmailService = 'none' | 'sendgrid' | 'smtp' | 'gmail';
@@ -49,6 +51,8 @@ export default function SettingsPage() {
   const [emailService, setEmailService] = useState<EmailService>('none');
   const [emailStatus, setEmailStatus] = useState<ServiceStatus>('not-configured');
   const [isEmailEnabled, setIsEmailEnabled] = useState(true);
+  const [isTesting, setIsTesting] = useState(false);
+  const { toast } = useToast();
 
   const handleToggleEmailService = (enabled: boolean) => {
     setIsEmailEnabled(enabled);
@@ -62,12 +66,56 @@ export default function SettingsPage() {
 
   const handleSaveConfiguration = () => {
     // Here you would call a secure backend function to save the keys
-    // For now, we'll just update the UI state
     if (emailService !== 'none') {
         setEmailStatus('operational');
+        toast({
+            title: "Configuration Saved",
+            description: `Email service is now set to ${emailService}.`,
+        });
+    } else {
+        setEmailStatus('not-configured');
+        toast({
+            title: "Configuration Cleared",
+            description: "Email service provider has been unset.",
+            variant: "destructive"
+        });
     }
     setConfigDialogOpen(false);
   };
+  
+  const handleTestService = async () => {
+    setIsTesting(true);
+    try {
+        const result = await testEmailService({
+            service: emailService,
+            recipient: 'admin@learnflow.app'
+        });
+
+        if (result.success) {
+            toast({
+                title: "Test Successful",
+                description: result.message,
+            });
+             setEmailStatus('operational');
+        } else {
+            toast({
+                title: "Test Failed",
+                description: result.message,
+                variant: "destructive",
+            });
+            setEmailStatus('degraded');
+        }
+
+    } catch (error) {
+        toast({
+            title: "Test Error",
+            description: "An unexpected error occurred while testing the service.",
+            variant: "destructive",
+        });
+        setEmailStatus('degraded');
+    }
+    setIsTesting(false);
+  }
 
 
   return (
@@ -99,6 +147,7 @@ export default function SettingsPage() {
                         <div className={cn("h-2.5 w-2.5 rounded-full", statusConfig[emailStatus].className)} />
                         <span className="text-sm font-medium">{statusConfig[emailStatus].text}</span>
                     </div>
+
                     <Switch
                       checked={isEmailEnabled}
                       onCheckedChange={handleToggleEmailService}
@@ -117,9 +166,13 @@ export default function SettingsPage() {
                 </div>
                 <div className="flex gap-2">
                     <Button variant="outline" onClick={() => setConfigDialogOpen(true)}>Configure</Button>
-                    <Button variant="secondary" disabled={!isEmailEnabled || emailService === 'none'}>
-                        <TestTube2 className="mr-2 h-4 w-4" />
-                        Test Service
+                    <Button variant="secondary" disabled={!isEmailEnabled || emailService === 'none' || isTesting} onClick={handleTestService}>
+                        {isTesting ? (
+                            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                        ) : (
+                            <TestTube2 className="mr-2 h-4 w-4" />
+                        )}
+                        {isTesting ? 'Testing...' : 'Test Service'}
                     </Button>
                 </div>
             </div>
