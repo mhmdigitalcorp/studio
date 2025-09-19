@@ -25,6 +25,7 @@ import {
   Trash2,
   Mail,
   ChevronDown,
+  Wand2,
 } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { users as initialUsers, User } from '@/lib/data';
@@ -75,7 +76,9 @@ export default function UsersPage() {
   const [searchTerm, setSearchTerm] = useState('');
   const [isDeleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [isEmailDialogOpen, setEmailDialogOpen] = useState(false);
+  const [isAddUserDialogOpen, setAddUserDialogOpen] = useState(false);
   const [emailContent, setEmailContent] = useState<GenerateEmailCampaignOutput>({ subject: '', body: '' });
+  const [newUser, setNewUser] = useState<Partial<User>>({ name: '', email: '', status: 'Active' });
 
   const filteredUsers = useMemo(() => {
     return users.filter(
@@ -107,6 +110,23 @@ export default function UsersPage() {
     setDeleteDialogOpen(false);
   };
   
+  const handleAddUser = () => {
+    const newId = `usr_${Date.now()}`;
+    const userToAdd: User = {
+        id: newId,
+        name: newUser.name || 'New User',
+        email: newUser.email || 'new.user@example.com',
+        avatar: `https://i.pravatar.cc/150?u=${newId}`,
+        status: newUser.status || 'Active',
+        lastLogin: new Date().toISOString().split('T')[0],
+        score: 0,
+        progress: 0,
+    };
+    setUsers(prev => [...prev, userToAdd]);
+    setAddUserDialogOpen(false);
+    setNewUser({ name: '', email: '', status: 'Active' });
+  }
+
   const handleGenerateEmail = async () => {
     const selectedUserDetails = users.filter(user => selectedUsers.includes(user.id));
     const targetAudience = selectedUserDetails.map(u => u.name).join(', ');
@@ -141,7 +161,7 @@ export default function UsersPage() {
               </CardDescription>
             </div>
             <div className="flex gap-2 w-full md:w-auto">
-              <Button variant="outline">
+              <Button variant="outline" onClick={() => setAddUserDialogOpen(true)}>
                 <PlusCircle className="mr-2 h-4 w-4" />
                 Add User
               </Button>
@@ -276,6 +296,47 @@ export default function UsersPage() {
           </Table>
         </CardContent>
       </Card>
+      
+      {/* Add User Dialog */}
+      <Dialog open={isAddUserDialogOpen} onOpenChange={setAddUserDialogOpen}>
+        <DialogContent className="sm:max-w-md">
+            <DialogHeader>
+                <DialogTitle className="font-headline">Add New User</DialogTitle>
+                <DialogDescription>
+                    Fill out the form to add a new user to the system.
+                </DialogDescription>
+            </DialogHeader>
+            <div className="grid gap-4 py-4">
+                <div className="grid gap-2">
+                    <Label htmlFor="name">Full Name</Label>
+                    <Input id="name" value={newUser.name} onChange={(e) => setNewUser({...newUser, name: e.target.value})} />
+                </div>
+                <div className="grid gap-2">
+                    <Label htmlFor="email">Email Address</Label>
+                    <Input id="email" type="email" value={newUser.email} onChange={(e) => setNewUser({...newUser, email: e.target.value})} />
+                </div>
+                <div className="grid gap-2">
+                    <Label htmlFor="status">Status</Label>
+                    <Select value={newUser.status} onValueChange={(value) => setNewUser({...newUser, status: value as 'Active' | 'Inactive'})}>
+                        <SelectTrigger>
+                            <SelectValue placeholder="Select status" />
+                        </SelectTrigger>
+                        <SelectContent>
+                            <SelectItem value="Active">Active</SelectItem>
+                            <SelectItem value="Inactive">Inactive</SelectItem>
+                        </SelectContent>
+                    </Select>
+                </div>
+            </div>
+            <DialogFooter>
+                <DialogClose asChild>
+                    <Button variant="outline">Cancel</Button>
+                </DialogClose>
+                <Button onClick={handleAddUser}>Add User</Button>
+            </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
 
       {/* Delete Confirmation Dialog */}
       <AlertDialog
@@ -325,6 +386,7 @@ export default function UsersPage() {
           </div>
           <DialogFooter>
              <Button variant="outline" onClick={handleGenerateEmail}>
+              <Wand2 className="mr-2 h-4 w-4" />
               Generate with AI
             </Button>
             <Button>Send Email</Button>
