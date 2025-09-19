@@ -339,7 +339,7 @@ export default function TodosPage() {
         <Card>
           <CardHeader>
             <CardTitle className="font-headline flex items-center gap-2"><BarChart2 /> Daily Stats</CardTitle>
-          </Header>
+          </CardHeader>
           <CardContent className="grid grid-cols-3 gap-4 text-center">
              <div className="p-4 bg-secondary/50 rounded-md">
                 <h3 className="text-2xl font-bold">{stats.today}</h3>
