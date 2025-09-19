@@ -23,19 +23,21 @@ export type User = {
   id: string;
   name: string;
   email: string;
+  phone: string;
   avatar: string;
   status: 'Active' | 'Inactive';
   lastLogin: string;
   score: number;
   progress: number;
+  password?: string;
 };
 
 export const users: User[] = [
-  { id: 'usr_1', name: "Alice Johnson", email: "alice.j@example.com", avatar: "https://i.pravatar.cc/150?u=a042581f4e29026024d", status: "Active", lastLogin: "2024-07-20", score: 92, progress: 100 },
-  { id: 'usr_2', name: "Bob Williams", email: "bob.w@example.com", avatar: "https://i.pravatar.cc/150?u=a042581f4e29026704d", status: "Active", lastLogin: "2024-07-21", score: 88, progress: 75 },
-  { id: 'usr_3', name: "Charlie Brown", email: "charlie.b@example.com", avatar: "https://i.pravatar.cc/150?u=a04258114e29026702d", status: "Inactive", lastLogin: "2024-06-15", score: 76, progress: 50 },
-  { id: 'usr_4', name: "Diana Miller", email: "diana.m@example.com", avatar: "https://i.pravatar.cc/150?u=a048581f4e29026701d", status: "Active", lastLogin: "2024-07-22", score: 95, progress: 100 },
-  { id: 'usr_5', name: "Ethan Davis", email: "ethan.d@example.com", avatar: "https://i.pravatar.cc/150?u=a092581f4e29026705d", status: "Inactive", lastLogin: "2024-05-30", score: 65, progress: 30 },
+  { id: 'usr_1', name: "Alice Johnson", email: "alice.j@example.com", phone: "123-456-7890", avatar: "https://i.pravatar.cc/150?u=a042581f4e29026024d", status: "Active", lastLogin: "2024-07-20", score: 92, progress: 100 },
+  { id: 'usr_2', name: "Bob Williams", email: "bob.w@example.com", phone: "234-567-8901", avatar: "https://i.pravatar.cc/150?u=a042581f4e29026704d", status: "Active", lastLogin: "2024-07-21", score: 88, progress: 75 },
+  { id: 'usr_3', name: "Charlie Brown", email: "charlie.b@example.com", phone: "345-678-9012", avatar: "https://i.pravatar.cc/150?u=a04258114e29026702d", status: "Inactive", lastLogin: "2024-06-15", score: 76, progress: 50 },
+  { id: 'usr_4', name: "Diana Miller", email: "diana.m@example.com", phone: "456-789-0123", avatar: "https://i.pravatar.cc/150?u=a048581f4e29026701d", status: "Active", lastLogin: "2024-07-22", score: 95, progress: 100 },
+  { id: 'usr_5', name: "Ethan Davis", email: "ethan.d@example.com", phone: "567-890-1234", avatar: "https://i.pravatar.cc/150?u=a092581f4e29026705d", status: "Inactive", lastLogin: "2024-05-30", score: 65, progress: 30 },
 ];
 
 export type Todo = {

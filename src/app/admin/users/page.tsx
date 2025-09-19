@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useRef } from 'react';
 import {
   Table,
   TableBody,
@@ -26,6 +26,8 @@ import {
   Mail,
   ChevronDown,
   Wand2,
+  Upload,
+  Download,
 } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { users as initialUsers, User } from '@/lib/data';
@@ -37,6 +39,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
   DropdownMenuSeparator,
+  DropdownMenuGroup,
 } from '@/components/ui/dropdown-menu';
 import { Input } from '@/components/ui/input';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -68,7 +71,10 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { generateEmailCampaign, GenerateEmailCampaignOutput } from '@/ai/flows/generate-email-campaigns';
+import {
+  generateEmailCampaign,
+  GenerateEmailCampaignOutput,
+} from '@/ai/flows/generate-email-campaigns';
 
 export default function UsersPage() {
   const [users, setUsers] = useState<User[]>(initialUsers);
@@ -77,8 +83,18 @@ export default function UsersPage() {
   const [isDeleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [isEmailDialogOpen, setEmailDialogOpen] = useState(false);
   const [isAddUserDialogOpen, setAddUserDialogOpen] = useState(false);
-  const [emailContent, setEmailContent] = useState<GenerateEmailCampaignOutput>({ subject: '', body: '' });
-  const [newUser, setNewUser] = useState<Partial<User>>({ name: '', email: '', status: 'Active' });
+  const [emailContent, setEmailContent] = useState<GenerateEmailCampaignOutput>({
+    subject: '',
+    body: '',
+  });
+  const [newUser, setNewUser] = useState<Partial<User>>({
+    name: '',
+    email: '',
+    phone: '',
+    password: '',
+    status: 'Active',
+  });
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const filteredUsers = useMemo(() => {
     return users.filter(
@@ -109,41 +125,101 @@ export default function UsersPage() {
     setSelectedUsers([]);
     setDeleteDialogOpen(false);
   };
-  
+
   const handleAddUser = () => {
     const newId = `usr_${Date.now()}`;
     const userToAdd: User = {
-        id: newId,
-        name: newUser.name || 'New User',
-        email: newUser.email || 'new.user@example.com',
-        avatar: `https://i.pravatar.cc/150?u=${newId}`,
-        status: newUser.status || 'Active',
-        lastLogin: new Date().toISOString().split('T')[0],
-        score: 0,
-        progress: 0,
+      id: newId,
+      name: newUser.name || 'New User',
+      email: newUser.email || 'new.user@example.com',
+      phone: newUser.phone || '',
+      password: newUser.password,
+      avatar: `https://i.pravatar.cc/150?u=${newId}`,
+      status: newUser.status || 'Active',
+      lastLogin: new Date().toISOString().split('T')[0],
+      score: 0,
+      progress: 0,
     };
-    setUsers(prev => [...prev, userToAdd]);
+    setUsers((prev) => [...prev, userToAdd]);
     setAddUserDialogOpen(false);
-    setNewUser({ name: '', email: '', status: 'Active' });
-  }
+    setNewUser({ name: '', email: '', phone: '', password: '', status: 'Active' });
+  };
 
   const handleGenerateEmail = async () => {
-    const selectedUserDetails = users.filter(user => selectedUsers.includes(user.id));
-    const targetAudience = selectedUserDetails.map(u => u.name).join(', ');
-    
-    // This is a placeholder for a more complex UI to gather campaign details.
+    const selectedUserDetails = users.filter((user) =>
+      selectedUsers.includes(user.id)
+    );
+    const targetAudience = selectedUserDetails.map((u) => u.name).join(', ');
+
     const result = await generateEmailCampaign({
-        campaignType: 'notification',
-        topic: 'A general update for selected users',
-        targetAudience: targetAudience,
+      campaignType: 'notification',
+      topic: 'A general update for selected users',
+      targetAudience: targetAudience,
     });
     setEmailContent(result);
-  }
+  };
 
   const openEmailDialog = () => {
-    setEmailContent({subject: '', body: ''});
+    setEmailContent({ subject: '', body: '' });
     setEmailDialogOpen(true);
-  }
+  };
+
+  const handleFileUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (file) {
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        const text = e.target?.result as string;
+        const lines = text.split('\n').filter(line => line.trim() !== '');
+        const headers = lines[0].split(',').map(h => h.trim().toLowerCase().replace(/"/g, ''));
+        const newOrUpdatedUsers: User[] = lines.slice(1).map(line => {
+          const data = line.split(',').map(d => d.trim().replace(/"/g, ''));
+          const userObj: any = {};
+          headers.forEach((header, index) => {
+            userObj[header] = data[index] || '';
+          });
+          return {
+            id: userObj.id || `usr_${Date.now()}_${Math.random()}`,
+            name: userObj.name,
+            email: userObj.email,
+            phone: userObj.phone,
+            avatar: userObj.avatar || `https://i.pravatar.cc/150?u=${userObj.id}`,
+            status: userObj.status as 'Active' | 'Inactive',
+            lastLogin: userObj.lastlogin || new Date().toISOString().split('T')[0],
+            score: userObj.score ? parseInt(userObj.score) : 0,
+            progress: userObj.progress ? parseInt(userObj.progress) : 0,
+          };
+        });
+
+        // Merge with existing users, updating if ID matches, otherwise adding
+        const usersMap = new Map(users.map(u => [u.id, u]));
+        newOrUpdatedUsers.forEach(u => usersMap.set(u.id, u));
+        setUsers(Array.from(usersMap.values()));
+      };
+      reader.readAsText(file);
+    }
+    if (event.target) {
+      event.target.value = '';
+    }
+  };
+
+  const handleFileDownload = () => {
+    const headers = ['id', 'name', 'email', 'phone', 'status', 'lastLogin', 'score', 'progress', 'avatar'];
+    const csvContent = [
+      headers.join(','),
+      ...users.map(user => headers.map(header => (user as any)[header]).join(','))
+    ].join('\n');
+    
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement('a');
+    const url = URL.createObjectURL(blob);
+    link.setAttribute('href', url);
+    link.setAttribute('download', 'users.csv');
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
 
   return (
     <>
@@ -161,42 +237,75 @@ export default function UsersPage() {
               </CardDescription>
             </div>
             <div className="flex gap-2 w-full md:w-auto">
-              <Button variant="outline" onClick={() => setAddUserDialogOpen(true)}>
-                <PlusCircle className="mr-2 h-4 w-4" />
-                Add User
+              <Button
+                variant="outline"
+                onClick={() => fileInputRef.current?.click()}
+              >
+                <Upload className="mr-2 h-4 w-4" />
+                Upload
+              </Button>
+              <input
+                type="file"
+                ref={fileInputRef}
+                className="hidden"
+                accept=".csv"
+                onChange={handleFileUpload}
+              />
+              <Button variant="outline" onClick={handleFileDownload}>
+                <Download className="mr-2 h-4 w-4" />
+                Download
               </Button>
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
-                  <Button variant="outline" disabled={selectedUsers.length === 0}>
-                    Bulk Actions
+                  <Button>
+                    <PlusCircle className="mr-2 h-4 w-4" />
+                    Add
                     <ChevronDown className="ml-2 h-4 w-4" />
                   </Button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end">
-                  <DropdownMenuItem onClick={openEmailDialog}>
-                    <Mail className="mr-2 h-4 w-4" />
-                    Email Selected ({selectedUsers.length})
+                  <DropdownMenuItem onClick={() => setAddUserDialogOpen(true)}>
+                    Add Manually
                   </DropdownMenuItem>
-                  <DropdownMenuSeparator />
-                  <DropdownMenuItem
-                    className="text-destructive focus:text-destructive"
-                    onClick={() => setDeleteDialogOpen(true)}
-                  >
-                    <Trash2 className="mr-2 h-4 w-4" />
-                    Delete Selected ({selectedUsers.length})
+                  <DropdownMenuItem onClick={() => fileInputRef.current?.click()}>
+                    Bulk Upload
                   </DropdownMenuItem>
                 </DropdownMenuContent>
               </DropdownMenu>
             </div>
           </div>
-          <div className="relative mt-4">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-            <Input
-              placeholder="Search users by name or email..."
-              className="pl-10"
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-            />
+          <div className="flex items-center justify-between mt-4 gap-2">
+            <div className="relative flex-1">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+              <Input
+                placeholder="Search users by name or email..."
+                className="pl-10"
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+              />
+            </div>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="outline" disabled={selectedUsers.length === 0}>
+                  Bulk Actions
+                  <ChevronDown className="ml-2 h-4 w-4" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuItem onClick={openEmailDialog}>
+                  <Mail className="mr-2 h-4 w-4" />
+                  Email Selected ({selectedUsers.length})
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem
+                  className="text-destructive focus:text-destructive"
+                  onClick={() => setDeleteDialogOpen(true)}
+                >
+                  <Trash2 className="mr-2 h-4 w-4" />
+                  Delete Selected ({selectedUsers.length})
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
           </div>
         </CardHeader>
         <CardContent>
@@ -206,10 +315,11 @@ export default function UsersPage() {
                 <TableHead className="w-12">
                   <Checkbox
                     checked={
-                      selectedUsers.length > 0 &&
-                      selectedUsers.length === filteredUsers.length
+                      filteredUsers.length > 0 && selectedUsers.length === filteredUsers.length
                     }
-                    onCheckedChange={(checked) => handleSelectAll(Boolean(checked))}
+                    onCheckedChange={(checked) =>
+                      handleSelectAll(Boolean(checked))
+                    }
                     aria-label="Select all"
                   />
                 </TableHead>
@@ -252,7 +362,9 @@ export default function UsersPage() {
                   </TableCell>
                   <TableCell>
                     <Badge
-                      variant={user.status === 'Active' ? 'default' : 'outline'}
+                      variant={
+                        user.status === 'Active' ? 'default' : 'outline'
+                      }
                     >
                       {user.status}
                     </Badge>
@@ -296,47 +408,87 @@ export default function UsersPage() {
           </Table>
         </CardContent>
       </Card>
-      
+
       {/* Add User Dialog */}
       <Dialog open={isAddUserDialogOpen} onOpenChange={setAddUserDialogOpen}>
         <DialogContent className="sm:max-w-md">
-            <DialogHeader>
-                <DialogTitle className="font-headline">Add New User</DialogTitle>
-                <DialogDescription>
-                    Fill out the form to add a new user to the system.
-                </DialogDescription>
-            </DialogHeader>
-            <div className="grid gap-4 py-4">
-                <div className="grid gap-2">
-                    <Label htmlFor="name">Full Name</Label>
-                    <Input id="name" value={newUser.name} onChange={(e) => setNewUser({...newUser, name: e.target.value})} />
-                </div>
-                <div className="grid gap-2">
-                    <Label htmlFor="email">Email Address</Label>
-                    <Input id="email" type="email" value={newUser.email} onChange={(e) => setNewUser({...newUser, email: e.target.value})} />
-                </div>
-                <div className="grid gap-2">
-                    <Label htmlFor="status">Status</Label>
-                    <Select value={newUser.status} onValueChange={(value) => setNewUser({...newUser, status: value as 'Active' | 'Inactive'})}>
-                        <SelectTrigger>
-                            <SelectValue placeholder="Select status" />
-                        </SelectTrigger>
-                        <SelectContent>
-                            <SelectItem value="Active">Active</SelectItem>
-                            <SelectItem value="Inactive">Inactive</SelectItem>
-                        </SelectContent>
-                    </Select>
-                </div>
+          <DialogHeader>
+            <DialogTitle className="font-headline">Add New User</DialogTitle>
+            <DialogDescription>
+              Fill out the form to add a new user to the system.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-4 py-4">
+            <div className="grid gap-2">
+              <Label htmlFor="name">Full Name</Label>
+              <Input
+                id="name"
+                value={newUser.name}
+                onChange={(e) => setNewUser({ ...newUser, name: e.target.value })}
+              />
             </div>
-            <DialogFooter>
-                <DialogClose asChild>
-                    <Button variant="outline">Cancel</Button>
-                </DialogClose>
-                <Button onClick={handleAddUser}>Add User</Button>
-            </DialogFooter>
+            <div className="grid gap-2">
+              <Label htmlFor="email">Email Address</Label>
+              <Input
+                id="email"
+                type="email"
+                value={newUser.email}
+                onChange={(e) =>
+                  setNewUser({ ...newUser, email: e.target.value })
+                }
+              />
+            </div>
+            <div className="grid gap-2">
+              <Label htmlFor="phone">Phone Number</Label>
+              <Input
+                id="phone"
+                type="tel"
+                value={newUser.phone}
+                onChange={(e) =>
+                  setNewUser({ ...newUser, phone: e.target.value })
+                }
+              />
+            </div>
+            <div className="grid gap-2">
+              <Label htmlFor="password">Password</Label>
+              <Input
+                id="password"
+                type="password"
+                value={newUser.password}
+                onChange={(e) =>
+                  setNewUser({ ...newUser, password: e.target.value })
+                }
+              />
+            </div>
+            <div className="grid gap-2">
+              <Label htmlFor="status">Status</Label>
+              <Select
+                value={newUser.status}
+                onValueChange={(value) =>
+                  setNewUser({
+                    ...newUser,
+                    status: value as 'Active' | 'Inactive',
+                  })
+                }
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Select status" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="Active">Active</SelectItem>
+                  <SelectItem value="Inactive">Inactive</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+          <DialogFooter>
+            <DialogClose asChild>
+              <Button variant="outline">Cancel</Button>
+            </DialogClose>
+            <Button onClick={handleAddUser}>Add User</Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
-
 
       {/* Delete Confirmation Dialog */}
       <AlertDialog
@@ -376,16 +528,35 @@ export default function UsersPage() {
           </DialogHeader>
           <div className="grid gap-4 py-4">
             <div className="grid grid-cols-4 items-center gap-4">
-              <Label htmlFor="subject" className="text-right">Subject</Label>
-              <Input id="subject" value={emailContent.subject} onChange={(e) => setEmailContent({...emailContent, subject: e.target.value})} className="col-span-3" />
+              <Label htmlFor="subject" className="text-right">
+                Subject
+              </Label>
+              <Input
+                id="subject"
+                value={emailContent.subject}
+                onChange={(e) =>
+                  setEmailContent({ ...emailContent, subject: e.target.value })
+                }
+                className="col-span-3"
+              />
             </div>
             <div className="grid grid-cols-4 items-start gap-4">
-              <Label htmlFor="body" className="text-right pt-2">Body</Label>
-              <Textarea id="body" value={emailContent.body} onChange={(e) => setEmailContent({...emailContent, body: e.target.value})} className="col-span-3" rows={10} />
+              <Label htmlFor="body" className="text-right pt-2">
+                Body
+              </Label>
+              <Textarea
+                id="body"
+                value={emailContent.body}
+                onChange={(e) =>
+                  setEmailContent({ ...emailContent, body: e.target.value })
+                }
+                className="col-span-3"
+                rows={10}
+              />
             </div>
           </div>
           <DialogFooter>
-             <Button variant="outline" onClick={handleGenerateEmail}>
+            <Button variant="outline" onClick={handleGenerateEmail}>
               <Wand2 className="mr-2 h-4 w-4" />
               Generate with AI
             </Button>
