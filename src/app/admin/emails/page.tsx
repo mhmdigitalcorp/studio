@@ -7,6 +7,7 @@ import {
   CardDescription,
   CardHeader,
   CardTitle,
+  CardFooter,
 } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import {
@@ -20,6 +21,9 @@ import {
   Calendar,
   MoreHorizontal,
   FileText,
+  Save,
+  Trash2,
+  Edit,
 } from 'lucide-react';
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
@@ -49,26 +53,50 @@ import {
 import { campaigns as initialCampaigns, Campaign } from '@/lib/email-data';
 import { Badge } from '@/components/ui/badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
+import { format } from 'date-fns';
 
 type ViewMode = 'manager' | 'composer';
 
+const initialComposerState = {
+  id: null as string | null,
+  recipients: 'all',
+  subject: '',
+  body: '',
+  sendNow: true,
+  scheduledAt: new Date(),
+};
+
 export default function EmailsPage() {
   const [view, setView] = useState<ViewMode>('manager');
-  const [campaigns] = useState<Campaign[]>(initialCampaigns);
-
+  const [campaigns, setCampaigns] = useState<Campaign[]>(initialCampaigns);
   const [isGenerating, setIsGenerating] = useState(false);
   const [isAiModalOpen, setAiModalOpen] = useState(false);
+  const [composerState, setComposerState] = useState(initialComposerState);
+  const [isDeleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [campaignToDelete, setCampaignToDelete] = useState<Campaign | null>(null);
+
   const [aiFormState, setAiFormState] = useState<Omit<GenerateEmailCampaignInput, 'targetAudience'>>({
     emailType: 'newsletter',
     tone: 'friendly',
     topic: '',
-  });
-
-  const [composerState, setComposerState] = useState({
-    recipients: 'all',
-    subject: '',
-    body: '',
-    sendNow: true,
+    additionalInstructions: '',
   });
 
   const handleGenerateWithAi = async () => {
@@ -83,6 +111,64 @@ export default function EmailsPage() {
     }
     setIsGenerating(false);
   };
+  
+  const handleOpenCreate = () => {
+    setComposerState(initialComposerState);
+    setView('composer');
+  };
+  
+  const handleOpenEdit = (campaign: Campaign) => {
+    setComposerState({
+      id: campaign.id,
+      recipients: campaign.recipients,
+      subject: campaign.subject,
+      body: campaign.body,
+      sendNow: campaign.status !== 'Scheduled',
+      scheduledAt: campaign.date !== 'N/A' ? new Date(campaign.date) : new Date(),
+    });
+    setView('composer');
+  };
+  
+  const handleOpenDeleteDialog = (campaign: Campaign) => {
+    setCampaignToDelete(campaign);
+    setDeleteDialogOpen(true);
+  };
+
+  const handleDeleteCampaign = () => {
+    if (campaignToDelete) {
+      setCampaigns(campaigns.filter((c) => c.id !== campaignToDelete.id));
+      setDeleteDialogOpen(false);
+      setCampaignToDelete(null);
+    }
+  };
+
+  const handleSave = (status: 'Draft' | 'Scheduled' | 'Sent') => {
+    const campaignData = {
+      subject: composerState.subject,
+      body: composerState.body,
+      recipients: composerState.recipients,
+      status,
+      date: status === 'Draft' ? 'N/A' : (composerState.sendNow ? new Date() : composerState.scheduledAt).toISOString(),
+    };
+
+    if (composerState.id) { // Update existing
+      setCampaigns(campaigns.map(c => c.id === composerState.id ? { ...c, ...campaignData } : c));
+    } else { // Create new
+      const newCampaign: Campaign = {
+        id: `camp_${Date.now()}`,
+        ...campaignData,
+      };
+      setCampaigns([...campaigns, newCampaign]);
+    }
+    setView('manager');
+  };
+
+  const recipientLabels: {[key: string]: string} = {
+    "all": "All Users",
+    "not-started": "Users who haven't started",
+    "completed-exam": "Users with completed exams",
+    "score-gt-80": "High-scoring users (>80%)",
+  }
 
   const CampaignManagerView = () => (
     <Card>
@@ -97,8 +183,8 @@ export default function EmailsPage() {
               View, manage, and create your email campaigns.
             </CardDescription>
           </div>
-          <Button onClick={() => setView('composer')}>
-            <PlusCircle />
+          <Button onClick={handleOpenCreate}>
+            <PlusCircle className="mr-2 h-4 w-4" />
             Create New Campaign
           </Button>
         </div>
@@ -126,12 +212,28 @@ export default function EmailsPage() {
                     {campaign.status}
                   </Badge>
                 </TableCell>
-                <TableCell>{campaign.recipients}</TableCell>
-                <TableCell>{campaign.date}</TableCell>
+                <TableCell>{recipientLabels[campaign.recipients] || campaign.recipients}</TableCell>
+                <TableCell>{campaign.date === 'N/A' ? 'N/A' : format(new Date(campaign.date), "PPP p")}</TableCell>
                 <TableCell className="text-right">
-                  <Button variant="ghost" size="icon">
-                    <MoreHorizontal className="h-4 w-4" />
-                  </Button>
+                   <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <Button variant="ghost" className="h-8 w-8 p-0">
+                          <span className="sr-only">Open menu</span>
+                          <MoreHorizontal className="h-4 w-4" />
+                        </Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end">
+                        <DropdownMenuItem onClick={() => handleOpenEdit(campaign)}>
+                          <Edit className="mr-2 h-4 w-4" />
+                          Edit
+                        </DropdownMenuItem>
+                         <DropdownMenuSeparator />
+                        <DropdownMenuItem className="text-destructive focus:text-destructive" onClick={() => handleOpenDeleteDialog(campaign)}>
+                          <Trash2 className="mr-2 h-4 w-4" />
+                          Delete
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
                 </TableCell>
               </TableRow>
             ))}
@@ -147,10 +249,9 @@ export default function EmailsPage() {
         <Button variant="outline" size="icon" onClick={() => setView('manager')}>
           <ArrowLeft />
         </Button>
-        <h2 className="font-headline text-2xl">Create New Campaign</h2>
+        <h2 className="font-headline text-2xl">{composerState.id ? 'Edit Campaign' : 'Create New Campaign'}</h2>
       </div>
 
-      {/* Recipient Segmentation */}
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
@@ -169,13 +270,11 @@ export default function EmailsPage() {
               <SelectItem value="not-started">Users who haven't started learning</SelectItem>
               <SelectItem value="completed-exam">Users with completed exams</SelectItem>
               <SelectItem value="score-gt-80">Users with exam score > 80%</SelectItem>
-              <SelectItem value="custom" disabled>Custom List (Coming Soon)</SelectItem>
             </SelectContent>
           </Select>
         </CardContent>
       </Card>
 
-      {/* Email Content */}
       <Card>
         <CardHeader>
           <div className="flex items-center justify-between">
@@ -187,10 +286,10 @@ export default function EmailsPage() {
               <CardDescription>Write your email manually or generate it with AI.</CardDescription>
             </div>
             <Button variant="outline" onClick={() => {
-              setAiFormState({ emailType: 'newsletter', tone: 'friendly', topic: '' });
+              setAiFormState({ emailType: 'newsletter', tone: 'friendly', topic: '', additionalInstructions: '' });
               setAiModalOpen(true);
             }}>
-              <Wand2 />
+              <Wand2 className="mr-2 h-4 w-4" />
               Generate with AI
             </Button>
           </div>
@@ -201,13 +300,12 @@ export default function EmailsPage() {
             <Input id="subject" placeholder="Your campaign subject" value={composerState.subject} onChange={e => setComposerState(prev => ({...prev, subject: e.target.value}))} />
           </div>
           <div className="grid gap-2">
-            <Label htmlFor="body">Content Body</Label>
+            <Label htmlFor="body">Content Body (Markdown supported)</Label>
             <Textarea id="body" rows={15} placeholder="Write your email here..." value={composerState.body} onChange={e => setComposerState(prev => ({...prev, body: e.target.value}))} />
           </div>
         </CardContent>
       </Card>
       
-      {/* Scheduling & Sending */}
       <Card>
          <CardHeader>
           <CardTitle className="flex items-center gap-2">
@@ -222,20 +320,24 @@ export default function EmailsPage() {
               <Label htmlFor="send-now">{composerState.sendNow ? 'Send Immediately' : 'Schedule for Later'}</Label>
             </div>
             {!composerState.sendNow && (
-              <Input type="datetime-local" disabled placeholder="Select a date and time" />
+              <Input 
+                type="datetime-local" 
+                value={format(new Date(composerState.scheduledAt), "yyyy-MM-dd'T'HH:mm")}
+                onChange={e => setComposerState(prev => ({...prev, scheduledAt: new Date(e.target.value)}))}
+                min={format(new Date(), "yyyy-MM-dd'T'HH:mm")}
+              />
             )}
         </CardContent>
-         <CardContent className="flex justify-end gap-2">
-            <Button variant="outline">Save Draft</Button>
+         <CardFooter className="flex justify-end gap-2">
+            <Button variant="outline" onClick={() => handleSave('Draft')}><Save className="mr-2 h-4 w-4" />Save Draft</Button>
             {composerState.sendNow ? (
-                 <Button><Send className="mr-2 h-4 w-4" /> Send Now</Button>
+                 <Button onClick={() => handleSave('Sent')}><Send className="mr-2 h-4 w-4" /> Send Now</Button>
             ) : (
-                <Button disabled><Calendar className="mr-2 h-4 w-4" /> Schedule</Button>
+                <Button onClick={() => handleSave('Scheduled')}><Calendar className="mr-2 h-4 w-4" /> Schedule</Button>
             )}
-        </CardContent>
+        </CardFooter>
       </Card>
 
-      {/* AI Generation Modal */}
        <Dialog open={isAiModalOpen} onOpenChange={setAiModalOpen}>
         <DialogContent>
           <DialogHeader>
@@ -283,6 +385,21 @@ export default function EmailsPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+      
+      <AlertDialog open={isDeleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Are you sure?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This will permanently delete the campaign "{campaignToDelete?.subject}". This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={handleDeleteCampaign} className="bg-destructive hover:bg-destructive/90">Delete</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 

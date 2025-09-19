@@ -1,38 +1,58 @@
 export type Campaign = {
   id: string;
   subject: string;
+  body: string;
   status: 'Sent' | 'Draft' | 'Scheduled';
-  recipients: number;
-  date: string;
+  recipients: string; // "all", "not-started", etc.
+  date: string; // ISO string for sent/scheduled date, or N/A
+  analytics?: {
+    recipients: number;
+    openRate: number;
+    clickRate: number;
+  };
 };
 
 export const campaigns: Campaign[] = [
   {
     id: 'camp_1',
     subject: 'New Feature: Voice-Activated Lessons!',
+    body: '## Discover a new way to learn!\n\nWe are excited to announce our latest feature: voice-activated lessons. You can now learn on the go, completely hands-free. Try it out today!',
     status: 'Sent',
-    recipients: 1257,
-    date: '2024-07-20',
+    recipients: 'all',
+    date: new Date('2024-07-20T10:00:00Z').toISOString(),
+    analytics: {
+      recipients: 1257,
+      openRate: 45,
+      clickRate: 12,
+    }
   },
   {
     id: 'camp_2',
     subject: 'Mid-Week Learning Reminder',
+    body: '### Keep the momentum going!\n\nJust a friendly reminder to continue your learning journey. A few minutes a day can make a big difference. Log in now and pick up where you left off.',
     status: 'Scheduled',
-    recipients: 834,
-    date: '2024-07-25',
+    recipients: 'not-started',
+    date: new Date(Date.now() + 2 * 24 * 60 * 60 * 1000).toISOString(), // 2 days from now
   },
   {
     id: 'camp_3',
-    subject: 'Q3 Curriculum Update (Draft)',
+    subject: 'Q3 Curriculum Update',
+    body: '',
     status: 'Draft',
-    recipients: 0,
+    recipients: 'all',
     date: 'N/A',
   },
    {
     id: 'camp_4',
     subject: 'Congratulations on Your High Score!',
+    body: '### Amazing work!\n\nYou recently scored over 80% on an exam. Keep up the excellent effort!',
     status: 'Sent',
-    recipients: 56,
-    date: '2024-07-18',
+    recipients: 'score-gt-80',
+    date: new Date('2024-07-18T15:30:00Z').toISOString(),
+    analytics: {
+      recipients: 56,
+      openRate: 78,
+      clickRate: 25,
+    }
   },
 ];
