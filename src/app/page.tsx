@@ -1,6 +1,6 @@
 import Image from 'next/image';
 import Link from 'next/link';
-import { ArrowRight, ShieldCheck, User } from 'lucide-react';
+import { ArrowRight, User } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { PlaceHolderImages } from '@/lib/placeholder-images';
@@ -38,7 +38,7 @@ export default function Home() {
             The future of learning is here. AI-powered voice lessons and intelligent exams, tailored just for you.
           </p>
 
-          <div className="mt-12 grid grid-cols-1 gap-6 md:grid-cols-2 lg:gap-8">
+          <div className="mt-12 grid grid-cols-1 gap-6 md:grid-cols-1 lg:gap-8">
             <Card className="transform transition-transform duration-300 hover:scale-105 hover:shadow-2xl">
               <CardHeader>
                 <CardTitle className="flex items-center gap-3">
@@ -53,25 +53,6 @@ export default function Home() {
                 <Button className="mt-6 w-full" asChild>
                   <Link href="/user/auth/login">
                     Start Learning <ArrowRight className="ml-2" />
-                  </Link>
-                </Button>
-              </CardContent>
-            </Card>
-
-            <Card className="transform transition-transform duration-300 hover:scale-105 hover:shadow-2xl">
-              <CardHeader>
-                <CardTitle className="flex items-center gap-3">
-                  <ShieldCheck className="h-6 w-6 text-accent" />
-                  <span className="font-headline text-2xl">Admin Portal</span>
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <p className="text-muted-foreground">
-                  Manage content, monitor user progress, and configure the platform with powerful admin tools.
-                </p>
-                <Button variant="accent" className="mt-6 w-full" asChild>
-                  <Link href="/admin/auth/login">
-                    Go to Dashboard <ArrowRight className="ml-2" />
                   </Link>
                 </Button>
               </CardContent>
