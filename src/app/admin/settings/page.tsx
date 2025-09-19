@@ -1,3 +1,6 @@
+'use client';
+
+import { useState } from 'react';
 import {
   Card,
   CardContent,
@@ -6,61 +9,218 @@ import {
   CardTitle,
 } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Settings as SettingsIcon, KeyRound, Save } from 'lucide-react';
+import { Settings as SettingsIcon, KeyRound, Save, Mail, TestTube2, AlertTriangle, CheckCircle2 } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Separator } from '@/components/ui/separator';
+import { Switch } from '@/components/ui/switch';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
+  DialogClose,
+} from '@/components/ui/dialog';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+import { Badge } from '@/components/ui/badge';
+import { cn } from '@/lib/utils';
+
+type ServiceStatus = 'operational' | 'degraded' | 'not-configured' | 'disabled';
+type EmailService = 'none' | 'sendgrid' | 'smtp' | 'gmail';
+
+const statusConfig: Record<ServiceStatus, { text: string; className: string; icon: React.ReactNode }> = {
+  'operational': { text: 'Operational', className: 'bg-green-500', icon: <CheckCircle2 className="h-4 w-4" /> },
+  'degraded': { text: 'Degraded', className: 'bg-yellow-500', icon: <AlertTriangle className="h-4 w-4" /> },
+  'not-configured': { text: 'Not Configured', className: 'bg-red-500', icon: <AlertTriangle className="h-4 w-4" /> },
+  'disabled': { text: 'Disabled', className: 'bg-gray-500', icon: <SettingsIcon className="h-4 w-4" /> },
+};
+
 
 export default function SettingsPage() {
+  const [isConfigDialogOpen, setConfigDialogOpen] = useState(false);
+  const [emailService, setEmailService] = useState<EmailService>('none');
+  const [emailStatus, setEmailStatus] = useState<ServiceStatus>('not-configured');
+  const [isEmailEnabled, setIsEmailEnabled] = useState(true);
+
+  const handleToggleEmailService = (enabled: boolean) => {
+    setIsEmailEnabled(enabled);
+    if (!enabled) {
+      setEmailStatus('disabled');
+    } else {
+      // Revert to previous status or re-check
+      setEmailStatus(emailService === 'none' ? 'not-configured' : 'operational');
+    }
+  };
+
+  const handleSaveConfiguration = () => {
+    // Here you would call a secure backend function to save the keys
+    // For now, we'll just update the UI state
+    if (emailService !== 'none') {
+        setEmailStatus('operational');
+    }
+    setConfigDialogOpen(false);
+  };
+
+
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="font-headline text-2xl flex items-center gap-2">
-          <SettingsIcon />
-          System Configuration
-        </CardTitle>
-        <CardDescription>
-          Securely configure and manage third-party API keys.
-        </CardDescription>
-      </CardHeader>
-      <CardContent>
-        <div className="space-y-6">
-          <div>
-            <h3 className="text-lg font-medium flex items-center gap-2"><KeyRound className="text-primary"/> AI Service Keys</h3>
-            <p className="text-sm text-muted-foreground">API keys for Genkit and Google AI.</p>
+    <div className="space-y-8">
+      <Card>
+        <CardHeader>
+          <CardTitle className="font-headline text-2xl flex items-center gap-2">
+            <SettingsIcon />
+            System Configuration
+          </CardTitle>
+          <CardDescription>
+            Manage and test third-party service integrations.
+          </CardDescription>
+        </CardHeader>
+      </Card>
+      
+      <Card>
+        <CardHeader>
+            <div className="flex items-center justify-between">
+                <div className="flex items-center gap-4">
+                    <Mail className="h-6 w-6"/>
+                    <div>
+                        <h3 className="text-lg font-semibold">Email Service</h3>
+                        <p className="text-sm text-muted-foreground">Provider for sending transactional emails and campaigns.</p>
+                    </div>
+                </div>
+                <div className="flex items-center gap-4">
+                    <div className="flex items-center gap-2">
+                        <div className={cn("h-2.5 w-2.5 rounded-full", statusConfig[emailStatus].className)} />
+                        <span className="text-sm font-medium">{statusConfig[emailStatus].text}</span>
+                    </div>
+                    <Switch
+                      checked={isEmailEnabled}
+                      onCheckedChange={handleToggleEmailService}
+                      aria-label="Toggle Email Service"
+                    />
+                </div>
+            </div>
+        </CardHeader>
+        <CardContent>
+            <div className="p-4 bg-secondary/30 rounded-lg flex flex-col md:flex-row items-center justify-between gap-4">
+                <div>
+                  <h4 className="font-medium">Current Provider</h4>
+                  <p className="text-muted-foreground text-sm">
+                    {emailService === 'none' ? 'No provider configured' : `Using ${emailService}`}
+                  </p>
+                </div>
+                <div className="flex gap-2">
+                    <Button variant="outline" onClick={() => setConfigDialogOpen(true)}>Configure</Button>
+                    <Button variant="secondary" disabled={!isEmailEnabled || emailService === 'none'}>
+                        <TestTube2 className="mr-2 h-4 w-4" />
+                        Test Service
+                    </Button>
+                </div>
+            </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <div className="flex items-center gap-4">
+            <KeyRound className="h-6 w-6" />
+            <div>
+              <h3 className="text-lg font-semibold">AI Service Keys</h3>
+              <p className="text-sm text-muted-foreground">API keys for Genkit and Google AI.</p>
+            </div>
           </div>
-          <div className="grid gap-4">
+        </CardHeader>
+        <CardContent>
+          <div className="grid gap-4 md:w-1/2">
             <div className="grid gap-2">
               <Label htmlFor="google-ai-key">Google AI API Key</Label>
               <Input id="google-ai-key" type="password" defaultValue="********************" />
             </div>
-          </div>
-
-          <Separator />
-
-          <div>
-            <h3 className="text-lg font-medium flex items-center gap-2"><KeyRound className="text-accent" /> Email Service Keys</h3>
-            <p className="text-sm text-muted-foreground">API keys for your email provider (e.g., SendGrid, Mailgun).</p>
-          </div>
-          <div className="grid gap-4">
-            <div className="grid gap-2">
-              <Label htmlFor="email-api-key">Email Provider API Key</Label>
-              <Input id="email-api-key" type="password" defaultValue="********************" />
-            </div>
-             <div className="grid gap-2">
-              <Label htmlFor="email-from">Default 'From' Email</Label>
-              <Input id="email-from" type="email" defaultValue="noreply@learnflow.app" />
+            <div className="flex justify-end">
+              <Button>
+                <Save className="mr-2 h-4 w-4" />
+                Save AI Key
+              </Button>
             </div>
           </div>
-          
-          <div className="flex justify-end">
-            <Button>
-              <Save className="mr-2 h-4 w-4" />
-              Save Changes
-            </Button>
+        </CardContent>
+      </Card>
+      
+      <Dialog open={isConfigDialogOpen} onOpenChange={setConfigDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Configure Email Service</DialogTitle>
+            <DialogDescription>
+              Select your provider and enter the required API keys. Keys are stored securely and never exposed to the client.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label>Email Provider</Label>
+              <Select value={emailService} onValueChange={(value) => setEmailService(value as EmailService)}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Select a provider" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">None</SelectItem>
+                  <SelectItem value="sendgrid">SendGrid</SelectItem>
+                  <SelectItem value="smtp">SMTP</SelectItem>
+                  <SelectItem value="gmail">Gmail</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            {emailService === 'sendgrid' && (
+              <div className="space-y-2 p-4 border rounded-md animate-in fade-in-50">
+                 <Label htmlFor="sendgrid-key">SendGrid API Key</Label>
+                 <Input id="sendgrid-key" type="password" placeholder="SG.xxxxxxxx" />
+              </div>
+            )}
+            
+            {emailService === 'smtp' && (
+              <div className="space-y-4 p-4 border rounded-md animate-in fade-in-50">
+                 <div className="space-y-2">
+                    <Label htmlFor="smtp-host">SMTP Host</Label>
+                    <Input id="smtp-host" placeholder="smtp.example.com" />
+                 </div>
+                 <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                        <Label htmlFor="smtp-port">Port</Label>
+                        <Input id="smtp-port" type="number" placeholder="587" />
+                    </div>
+                     <div className="space-y-2">
+                        <Label htmlFor="smtp-user">Username</Label>
+                        <Input id="smtp-user" placeholder="your-username" />
+                    </div>
+                 </div>
+                 <div className="space-y-2">
+                    <Label htmlFor="smtp-pass">Password</Label>
+                    <Input id="smtp-pass" type="password" />
+                 </div>
+              </div>
+            )}
+
+            {(emailService === 'sendgrid' || emailService === 'smtp') && (
+              <div className="space-y-2">
+                <Label htmlFor="from-email">Default 'From' Email</Label>
+                <Input id="from-email" type="email" placeholder="noreply@learnflow.app" />
+              </div>
+            )}
           </div>
-        </div>
-      </CardContent>
-    </Card>
+          <DialogFooter>
+            <DialogClose asChild>
+              <Button variant="outline">Cancel</Button>
+            </DialogClose>
+            <Button onClick={handleSaveConfiguration} disabled={emailService === 'none'}>Save Configuration</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </div>
   );
 }
