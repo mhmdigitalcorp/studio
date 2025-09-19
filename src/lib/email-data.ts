@@ -32,7 +32,7 @@ export const campaigns: Campaign[] = [
     body: '### Keep the momentum going!\n\nJust a friendly reminder to continue your learning journey. A few minutes a day can make a big difference. Log in now and pick up where you left off.',
     status: 'Scheduled',
     recipients: 'not-started',
-    date: new Date(Date.now() + 2 * 24 * 60 * 60 * 1000).toISOString(), // 2 days from now
+    date: new Date('2024-08-01T10:00:00Z').toISOString(), 
   },
   {
     id: 'camp_3',
