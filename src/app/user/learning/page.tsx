@@ -2,11 +2,19 @@
 import { useState, useEffect, useRef } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { questions, Question } from '@/lib/data';
+import { questions as allQuestions, Question } from '@/lib/data';
 import { generateVoiceLessons } from '@/ai/flows/generate-voice-lessons';
-import { Play, Pause, SkipForward, SkipBack, Volume2, Loader2, Info } from 'lucide-react';
+import { Play, Pause, SkipForward, SkipBack, Volume2, Loader2, Info, Mic } from 'lucide-react';
+import { useSpeechRecognition } from '@/hooks/use-speech-recognition';
+import { cn } from '@/lib/utils';
+import { Badge } from '@/components/ui/badge';
+
+type LearningState = 'category_selection' | 'lesson';
 
 export default function LearningPage() {
+  const [learningState, setLearningState] = useState<LearningState>('category_selection');
+  const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
+  const [questions, setQuestions] = useState<Question[]>([]);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [showAnswer, setShowAnswer] = useState(false);
   const [isPlaying, setIsPlaying] = useState(false);
@@ -14,19 +22,59 @@ export default function LearningPage() {
   const [loadingAudio, setLoadingAudio] = useState<'question' | 'answer' | null>(null);
   const audioCache = useRef<Record<string, { questionAudio: string; answerAudio: string }>>({});
 
-  const currentQuestion: Question = questions[currentIndex];
+  const { listening, transcript, startListening, stopListening } = useSpeechRecognition();
+
+  const categories = [...new Set(allQuestions.map(q => q.category))];
+
+  const currentQuestion: Question | undefined = questions[currentIndex];
 
   useEffect(() => {
-    // Stop any playing audio when the question changes
+    if (transcript) {
+      const command = transcript.toLowerCase().trim();
+      if (command.includes('next') || command.includes('skip')) {
+        handleNext();
+      } else if (command.includes('back') || command.includes('previous')) {
+        handlePrev();
+      } else if (command.includes('replay') || command.includes('repeat')) {
+        playAudio('question');
+      }
+      // The transcript should be cleared after a command is processed.
+      // This is managed inside the useSpeechRecognition hook.
+    }
+  }, [transcript]);
+
+  useEffect(() => {
+    // Continuous listening
+    if (!listening) {
+      startListening();
+    }
+    // Cleanup on unmount
+    return () => {
+      stopListening();
+      if (currentAudio) {
+        currentAudio.pause();
+      }
+    };
+  }, [listening, startListening, stopListening, currentAudio]);
+
+
+  useEffect(() => {
     if (currentAudio) {
       currentAudio.pause();
       setIsPlaying(false);
     }
     setShowAnswer(false);
-  }, [currentIndex]);
-  
+  }, [currentIndex, selectedCategory]);
+
+  const selectCategory = (category: string) => {
+    setSelectedCategory(category);
+    setQuestions(allQuestions.filter(q => q.category === category));
+    setLearningState('lesson');
+    setCurrentIndex(0);
+  };
+
   const playAudio = async (type: 'question' | 'answer') => {
-    if (loadingAudio) return;
+    if (loadingAudio || !currentQuestion) return;
 
     if (currentAudio) {
       currentAudio.pause();
@@ -59,7 +107,13 @@ export default function LearningPage() {
     setLoadingAudio(null);
     audio.play();
     setIsPlaying(true);
-    audio.onended = () => setIsPlaying(false);
+    audio.onended = () => {
+        setIsPlaying(false)
+        if(type === 'question'){
+            // Automatically play the answer after the question
+            playAudio('answer');
+        }
+    };
   };
 
   const handlePlayPause = () => {
@@ -84,16 +138,53 @@ export default function LearningPage() {
     setCurrentIndex((prev) => (prev - 1 + questions.length) % questions.length);
   };
 
+  if (learningState === 'category_selection') {
+    return (
+        <div className="container mx-auto max-w-3xl">
+            <Card>
+                <CardHeader>
+                    <CardTitle className="font-headline text-2xl">Select a Category</CardTitle>
+                    <p className="text-muted-foreground">Choose a topic to start your voice-driven learning session.</p>
+                </CardHeader>
+                <CardContent className="grid grid-cols-2 md:grid-cols-3 gap-4">
+                    {categories.map(category => (
+                        <Button key={category} variant="outline" className="h-24 text-lg" onClick={() => selectCategory(category)}>
+                            {category}
+                        </Button>
+                    ))}
+                </CardContent>
+            </Card>
+        </div>
+    )
+  }
+
+  if (!currentQuestion) {
+      return (
+          <div className="container mx-auto max-w-3xl text-center">
+            <p>No questions found for this category.</p>
+            <Button onClick={() => setLearningState('category_selection')} className="mt-4">Back to Categories</Button>
+          </div>
+      )
+  }
+
   return (
     <div className="container mx-auto max-w-3xl">
       <Card className="overflow-hidden">
         <CardHeader>
-          <CardTitle className="font-headline text-2xl flex items-center gap-2">
-            <Volume2 /> Voice-First Learning
-          </CardTitle>
-          <p className="text-muted-foreground">
-            Lesson {currentIndex + 1} of {questions.length}
-          </p>
+            <div className="flex justify-between items-start">
+                <div>
+                    <CardTitle className="font-headline text-2xl flex items-center gap-2">
+                        <Volume2 /> {selectedCategory}
+                    </CardTitle>
+                    <p className="text-muted-foreground">
+                        Lesson {currentIndex + 1} of {questions.length}
+                    </p>
+                </div>
+                <div className="flex items-center gap-2">
+                    <Mic className={cn("text-muted-foreground transition-colors", listening && "text-primary animate-pulse")} />
+                    <Button variant="outline" onClick={() => setLearningState('category_selection')}>Change Category</Button>
+                </div>
+            </div>
         </CardHeader>
         <CardContent className="space-y-6">
           <div className="p-6 bg-secondary/30 rounded-lg min-h-[120px] flex items-center justify-center">
@@ -135,9 +226,11 @@ export default function LearningPage() {
                 Play Answer
             </Button>
           </div>
-
         </CardContent>
       </Card>
+      <div className="text-center mt-4 text-sm text-muted-foreground">
+        Voice commands enabled: "Next", "Back", "Replay"
+      </div>
     </div>
   );
 }
