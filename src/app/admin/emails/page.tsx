@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import {
   Card,
   CardContent,
@@ -74,21 +74,21 @@ import { format } from 'date-fns';
 
 type ViewMode = 'manager' | 'composer';
 
-const initialComposerState = {
+const getInitialComposerState = () => ({
   id: null as string | null,
   recipients: 'all',
   subject: '',
   body: '',
   sendNow: true,
   scheduledAt: new Date(),
-};
+});
 
 export default function EmailsPage() {
   const [view, setView] = useState<ViewMode>('manager');
   const [campaigns, setCampaigns] = useState<Campaign[]>(initialCampaigns);
   const [isGenerating, setIsGenerating] = useState(false);
   const [isAiModalOpen, setAiModalOpen] = useState(false);
-  const [composerState, setComposerState] = useState(initialComposerState);
+  const [composerState, setComposerState] = useState(getInitialComposerState());
   const [isDeleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [campaignToDelete, setCampaignToDelete] = useState<Campaign | null>(null);
 
@@ -98,6 +98,13 @@ export default function EmailsPage() {
     topic: '',
     additionalInstructions: '',
   });
+
+  useEffect(() => {
+    // This hook ensures that `new Date()` is only called on the client side,
+    // preventing hydration mismatches.
+    setComposerState(prev => ({ ...prev, scheduledAt: new Date() }));
+  }, []);
+
 
   const handleGenerateWithAi = async () => {
     setIsGenerating(true);
@@ -113,7 +120,7 @@ export default function EmailsPage() {
   };
   
   const handleOpenCreate = () => {
-    setComposerState(initialComposerState);
+    setComposerState(getInitialComposerState());
     setView('composer');
   };
   

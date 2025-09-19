@@ -14,7 +14,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
 import { todos as initialTodos, Todo } from '@/lib/data';
 import { cn } from '@/lib/utils';
-import { format, isToday, isPast, isFuture, startOfToday, parseISO, isEqual } from 'date-fns';
+import { format, isToday, isPast, parseISO, isEqual } from 'date-fns';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
 import { Calendar } from '@/components/ui/calendar';
@@ -33,7 +33,6 @@ import {
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
-  AlertDialogTrigger,
 } from "@/components/ui/alert-dialog"
 import {
   Dialog,
@@ -52,7 +51,7 @@ type FilterType = 'today' | 'overdue' | 'all';
 export default function TodosPage() {
   const [todos, setTodos] = useState<Todo[]>(initialTodos);
   const [filter, setFilter] = useState<FilterType>('today');
-  const [selectedDate, setSelectedDate] = useState<Date | undefined>(new Date());
+  const [selectedDate, setSelectedDate] = useState<Date | undefined>(undefined);
   const [isDeleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [isNewTaskDialogOpen, setNewTaskDialogOpen] = useState(false);
   const [isConflictDialogOpen, setConflictDialogOpen] = useState(false);
@@ -62,6 +61,9 @@ export default function TodosPage() {
   const [currentTime, setCurrentTime] = useState('');
 
   useEffect(() => {
+    // These state initializations are wrapped in useEffect to prevent hydration errors.
+    // They will only run on the client side.
+    setSelectedDate(new Date());
     const timer = setInterval(() => {
       setCurrentTime(format(new Date(), 'HH:mm:ss'));
     }, 1000);
@@ -181,15 +183,17 @@ export default function TodosPage() {
             </CardTitle>
           </CardHeader>
           <CardContent className="flex flex-col items-center">
-            <Calendar
-              mode="single"
-              selected={selectedDate}
-              onSelect={setSelectedDate}
-              modifiers={taskDayModifier}
-              modifiersClassNames={{
-                task: 'bg-primary/20 rounded-full'
-              }}
-            />
+            {selectedDate && (
+                <Calendar
+                  mode="single"
+                  selected={selectedDate}
+                  onSelect={setSelectedDate}
+                  modifiers={taskDayModifier}
+                  modifiersClassNames={{
+                    task: 'bg-primary/20 rounded-full'
+                  }}
+                />
+            )}
             <Dialog open={isNewTaskDialogOpen} onOpenChange={setNewTaskDialogOpen}>
               <DialogTrigger asChild>
                 <Button className="mt-4 w-full"><PlusCircle className="mr-2"/>New Task</Button>
@@ -318,18 +322,24 @@ export default function TodosPage() {
             <CardTitle className="font-headline flex items-center gap-2"><Clock /> Quick View</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="flex items-center justify-center p-6 bg-secondary/50 rounded-md text-center">
-              <div className="w-full">
-                <p className="font-headline text-5xl font-bold text-foreground">{currentTime}</p>
-                <p className="text-muted-foreground text-lg">{format(new Date(), 'EEEE, MMMM do')}</p>
+            {currentTime ? (
+              <div className="flex items-center justify-center p-6 bg-secondary/50 rounded-md text-center">
+                <div className="w-full">
+                  <p className="font-headline text-5xl font-bold text-foreground">{currentTime}</p>
+                  <p className="text-muted-foreground text-lg">{format(new Date(), 'EEEE, MMMM do')}</p>
+                </div>
               </div>
-            </div>
+            ) : (
+                <div className="flex items-center justify-center p-6 bg-secondary/50 rounded-md text-center">
+                  <p>Loading...</p>
+                </div>
+            )}
           </CardContent>
         </Card>
         <Card>
           <CardHeader>
             <CardTitle className="font-headline flex items-center gap-2"><BarChart2 /> Daily Stats</CardTitle>
-          </CardHeader>
+          </Header>
           <CardContent className="grid grid-cols-3 gap-4 text-center">
              <div className="p-4 bg-secondary/50 rounded-md">
                 <h3 className="text-2xl font-bold">{stats.today}</h3>
@@ -411,5 +421,3 @@ export default function TodosPage() {
     </div>
   );
 }
-
-    
