@@ -66,6 +66,12 @@ export default function LearningPage() {
     setShowAnswer(false);
   }, [currentIndex, selectedCategory]);
 
+  useEffect(() => {
+    if (isPlaying && currentQuestion && !currentAudio) {
+        playAudio('question');
+    }
+  }, [isPlaying, currentIndex]);
+
   const selectCategory = (category: string) => {
     setSelectedCategory(category);
     setQuestions(allQuestions.filter(q => q.category === category));
@@ -108,10 +114,14 @@ export default function LearningPage() {
     audio.play();
     setIsPlaying(true);
     audio.onended = () => {
-        setIsPlaying(false)
-        if(type === 'question'){
-            // Automatically play the answer after the question
+        if (type === 'question') {
             playAudio('answer');
+        } else { // Answer finished
+            if (currentIndex < questions.length - 1) {
+                handleNext(true); // Move to the next and autoplay
+            } else {
+                setIsPlaying(false); // Stop playing at the end of the list
+            }
         }
     };
   };
@@ -130,8 +140,12 @@ export default function LearningPage() {
     }
   };
 
-  const handleNext = () => {
-    setCurrentIndex((prev) => (prev + 1) % questions.length);
+  const handleNext = (autoplay = false) => {
+    const nextIndex = (currentIndex + 1) % questions.length;
+    setCurrentIndex(nextIndex);
+    if(autoplay && isPlaying) {
+      // This will be picked up by the useEffect
+    }
   };
 
   const handlePrev = () => {
@@ -198,7 +212,7 @@ export default function LearningPage() {
           )}
 
           <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
-             <Button variant="outline" size="icon" onClick={handlePrev} disabled={loadingAudio !== null}>
+             <Button variant="outline" size="icon" onClick={() => handlePrev()} disabled={loadingAudio !== null}>
                 <SkipBack />
               </Button>
             <Button size="lg" onClick={handlePlayPause} disabled={loadingAudio === 'question' || loadingAudio === 'answer'}>
@@ -209,9 +223,9 @@ export default function LearningPage() {
               ) : (
                 <Play className="h-6 w-6" />
               )}
-               <span className="ml-2">{isPlaying ? 'Pause' : 'Play Question'}</span>
+               <span className="ml-2">{isPlaying ? 'Pause' : 'Play'}</span>
             </Button>
-            <Button variant="outline" size="icon" onClick={handleNext} disabled={loadingAudio !== null}>
+            <Button variant="outline" size="icon" onClick={() => handleNext()} disabled={loadingAudio !== null}>
               <SkipForward />
             </Button>
           </div>
@@ -223,7 +237,7 @@ export default function LearningPage() {
             </Button>
             <Button variant="secondary" onClick={() => playAudio('answer')} disabled={loadingAudio === 'answer'}>
                 {loadingAudio === 'answer' ? <Loader2 className="animate-spin mr-2"/> : <Volume2 className="mr-2 h-4 w-4" />}
-                Play Answer
+                Play Answer Only
             </Button>
           </div>
         </CardContent>
