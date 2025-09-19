@@ -154,7 +154,7 @@ export default function TodosPage() {
   }, [todos]);
   
   const taskDayModifier = {
-    task: (date: Date) => daysWithTasks.has(format(date, 'yyyy-MM-dd')),
+    task: (date: Date) => daysWithTasks.has(format(date, 'yyyy-M-d')),
   };
 
   const priorityClasses = {
@@ -170,7 +170,7 @@ export default function TodosPage() {
     "Administration": "bg-purple-500/20 text-purple-400",
     "Communication": "bg-green-500/20 text-green-400",
     "Uncategorized": "bg-gray-500/20 text-gray-400",
-  }
+  };
 
   return (
     <div className="grid grid-cols-1 xl:grid-cols-12 gap-6 h-full">
@@ -417,7 +417,6 @@ export default function TodosPage() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-
     </div>
   );
 }
