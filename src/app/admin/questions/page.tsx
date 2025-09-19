@@ -132,8 +132,9 @@ export default function QuestionsPage() {
             <TableHeader>
               <TableRow>
                 <TableHead className="w-[80px]">ID</TableHead>
+                <TableHead className="w-[150px]">Category</TableHead>
                 <TableHead>Question</TableHead>
-                <TableHead>Category</TableHead>
+                <TableHead>Answer</TableHead>
                 <TableHead>Remarks</TableHead>
                 <TableHead className="w-[100px] text-right">Actions</TableHead>
               </TableRow>
@@ -142,10 +143,11 @@ export default function QuestionsPage() {
               {questions.map((q) => (
                 <TableRow key={q.id}>
                   <TableCell className="font-medium">{`Q-${String(q.id).padStart(4, '0')}`}</TableCell>
-                  <TableCell className="max-w-md truncate">{q.question}</TableCell>
                   <TableCell>
                     <Badge variant="secondary">{q.category}</Badge>
                   </TableCell>
+                  <TableCell className="max-w-sm truncate">{q.question}</TableCell>
+                  <TableCell className="max-w-sm truncate">{q.answer}</TableCell>
                   <TableCell className="max-w-xs truncate text-muted-foreground">{q.remarks || 'N/A'}</TableCell>
                   <TableCell className="text-right">
                     <DropdownMenu>
