@@ -44,12 +44,23 @@ export type Todo = {
   id: number;
   task: string;
   completed: boolean;
+  priority: 'high' | 'medium' | 'low' | 'info';
+  dueDate: string; // ISO string
+  category: string;
+  subtasks: { id: number; text: string; completed: boolean }[];
 };
 
+const tomorrow = new Date();
+tomorrow.setDate(tomorrow.getDate() + 1);
+
+const yesterday = new Date();
+yesterday.setDate(yesterday.getDate() - 1);
+
 export const todos: Todo[] = [
-  { id: 1, task: "Finalize Q3 curriculum questions", completed: false },
-  { id: 2, task: "Schedule user feedback session for the new exam module", completed: false },
-  { id: 3, task: "Update API keys for the email service", completed: true },
-  { id: 4, task: "Draft announcement for the new voice lesson feature", completed: false },
-  { id: 5, task: "Review bulk user import error logs", completed: false },
+  { id: 1, task: "Finalize Q3 curriculum questions", completed: false, priority: 'high', dueDate: new Date().toISOString(), category: "Content", subtasks: [] },
+  { id: 2, task: "Schedule user feedback session for the new exam module", completed: false, priority: 'medium', dueDate: tomorrow.toISOString(), category: "Planning", subtasks: [] },
+  { id: 3, task: "Update API keys for the email service", completed: true, priority: 'low', dueDate: new Date().toISOString(), category: "Administration", subtasks: [] },
+  { id: 4, task: "Draft announcement for the new voice lesson feature", completed: false, priority: 'medium', dueDate: new Date().toISOString(), category: "Communication", subtasks: [] },
+  { id: 5, task: "Review bulk user import error logs", completed: false, priority: 'high', dueDate: yesterday.toISOString(), category: "Administration", subtasks: [] },
+  { id: 6, task: "Plan next sprint meeting", completed: false, priority: 'info', dueDate: tomorrow.toISOString(), category: "Planning", subtasks: []}
 ];
