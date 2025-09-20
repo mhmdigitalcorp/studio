@@ -9,6 +9,8 @@ import { useSpeechRecognition } from '@/hooks/use-speech-recognition';
 import { cn } from '@/lib/utils';
 import _ from 'lodash';
 import { manageQuestion } from '@/ai/flows/manage-question';
+import { useAuth } from '@/context/AuthContext';
+import { manageUser } from '@/ai/flows/manage-user';
 
 type LearningState = 'category_selection' | 'lesson';
 
@@ -41,7 +43,7 @@ export default function LearningPage() {
   const [loadingAudio, setLoadingAudio] = useState<'question' | 'answer' | null>(null);
   const [isPlayingSequence, setIsPlayingSequence] = useState(false);
   
-  // Use ref for currentAudio to avoid dependency issues
+  const { currentUser, refreshUser } = useAuth();
   const currentAudioRef = useRef<HTMLAudioElement | null>(null);
   const audioCache = useRef<Record<string, { questionAudio: string; answerAudio: string }>>({});
 
@@ -60,11 +62,9 @@ export default function LearningPage() {
     loadData();
   }, []);
 
-  // FIXED: playAudio function without circular dependencies
   const playAudio = useCallback(async (type: 'question' | 'answer'): Promise<void> => {
     if (loadingAudio || !currentQuestion) return;
 
-    // Stop any currently playing audio using the ref
     if (currentAudioRef.current) {
       currentAudioRef.current.pause();
       currentAudioRef.current = null;
@@ -118,48 +118,63 @@ export default function LearningPage() {
       setLoadingAudio(null);
       throw error;
     }
-  }, [currentQuestion, loadingAudio]); // REMOVED currentAudio from dependencies
+  }, [currentQuestion, loadingAudio]);
 
-  // FIXED: playSequence function
   const playSequence = useCallback(async (): Promise<void> => {
     if (isPlayingSequence || !currentQuestion) return;
     
-    console.log('Starting play sequence');
     setIsPlayingSequence(true);
     
     try {
-      console.log('Playing question...');
       await playAudio('question');
-      console.log('Question finished, showing answer');
       setShowAnswer(true);
       
-      console.log('Pausing before answer...');
       await new Promise(resolve => setTimeout(resolve, 1000));
       
-      console.log('Playing answer...');
       await playAudio('answer');
-      console.log('Answer finished');
       
     } catch (error) {
       console.error("Error in play sequence:", error);
     } finally {
-      console.log('Play sequence completed');
       setIsPlayingSequence(false);
       setIsPlaying(false);
     }
   }, [isPlayingSequence, currentQuestion, playAudio]);
 
-  // FIXED: Stable handler functions
+  const updateProgress = useCallback(async (newIndex: number) => {
+    if (currentUser && questions.length > 0) {
+      const newProgress = Math.round(((newIndex + 1) / questions.length) * 100);
+      if (newProgress > (currentUser.progress || 0)) {
+        await manageUser({
+          action: 'update',
+          userId: currentUser.uid,
+          userData: { progress: newProgress },
+        });
+        await refreshUser();
+      }
+    }
+  }, [currentUser, questions.length, refreshUser]);
+
+  const handleNext = useCallback(_.debounce(() => {
+    const newIndex = (currentIndex + 1) % (questions.length || 1);
+    setCurrentIndex(newIndex);
+    updateProgress(newIndex);
+  }, 300), [currentIndex, questions.length, updateProgress]);
+
+  const handlePrev = useCallback(_.debounce(() => {
+    const newIndex = (currentIndex - 1 + (questions.length || 1)) % (questions.length || 1);
+    setCurrentIndex(newIndex);
+    updateProgress(newIndex);
+  }, 300), [currentIndex, questions.length, updateProgress]);
+
   const handlePlayPause = useCallback(async (): Promise<void> => {
     if (isPlaying) {
-      // Pause current audio
       if (currentAudioRef.current) {
         currentAudioRef.current.pause();
         setIsPlaying(false);
         setIsPlayingSequence(false);
       }
     } else {
-      // Start playing sequence
       await playSequence();
     }
   }, [isPlaying, playSequence]);
@@ -168,15 +183,6 @@ export default function LearningPage() {
     playAudio('question');
   }, 300), [playAudio]);
 
-  const handleNext = useCallback(_.debounce(() => {
-    setCurrentIndex(i => (i + 1) % (questions.length || 1));
-  }, 300), [questions.length]);
-
-  const handlePrev = useCallback(_.debounce(() => {
-    setCurrentIndex(i => (i - 1 + (questions.length || 1)) % (questions.length || 1));
-  }, 300), [questions.length]);
-
-  // Voice commands handler
   useEffect(() => {
     if (transcript) {
       const command = transcript.toLowerCase().trim();
@@ -198,7 +204,6 @@ export default function LearningPage() {
     }
   }, [transcript, handleNext, handlePrev, handleRepeat, handlePlayPause]);
 
-  // Cleanup effects
   useEffect(() => {
     return () => {
       if (currentAudioRef.current) {
@@ -208,7 +213,6 @@ export default function LearningPage() {
   }, []);
 
   useEffect(() => {
-    // Reset audio when question changes
     if (currentAudioRef.current) {
       currentAudioRef.current.pause();
       setIsPlaying(false);
@@ -223,6 +227,7 @@ export default function LearningPage() {
     setQuestions(categoryQuestions);
     setLearningState('lesson');
     setCurrentIndex(0);
+    updateProgress(0); // Set initial progress for the category
   };
 
   if (isLoading) {

@@ -38,6 +38,8 @@ import { useTTS } from '@/hooks/use-tts';
 import { manageQuestion } from '@/ai/flows/manage-question';
 import { useToast } from '@/hooks/use-toast';
 import _ from 'lodash';
+import { useAuth } from '@/context/AuthContext';
+import { manageUser } from '@/ai/flows/manage-user';
 
 type ExamState = 'category_selection' | 'mode_selection' | 'ongoing' | 'finished';
 type InteractionState =
@@ -124,11 +126,25 @@ export default function ExamPage() {
   const [score, setScore] = useState({ correct: 0, total: 0 });
   const [interactionState, setInteractionState] = useState<InteractionState>('idle');
   
+  const { currentUser, refreshUser } = useAuth();
   const { toast } = useToast();
   const { isListening, transcript, startListening, stopListening, browserSupportsSpeechRecognition, micPermission } = useSpeechRecognition();
   const { speak, isSpeaking } = useTTS();
   const currentQuestion = examQuestions[currentQuestionIndex];
   const wasListening = useRef(false);
+
+  const handleFinishExam = useCallback(async () => {
+    const finalScore = Math.round((score.correct / examQuestions.length) * 100);
+    if (currentUser) {
+      await manageUser({
+        action: 'update',
+        userId: currentUser.uid,
+        userData: { score: finalScore },
+      });
+      await refreshUser();
+    }
+    setExamState('finished');
+  }, [score.correct, examQuestions.length, currentUser, refreshUser]);
 
   const handleNextQuestion = useCallback(() => {
     setUserAnswer('');
@@ -137,12 +153,11 @@ export default function ExamPage() {
       setCurrentQuestionIndex(i => i + 1);
       setInteractionState('idle');
     } else {
-      setExamState('finished');
+      handleFinishExam();
     }
-  }, [currentQuestionIndex, examQuestions.length]);
+  }, [currentQuestionIndex, examQuestions.length, handleFinishExam]);
 
   const handleSubmit = useCallback(async () => {
-    // --- STATE GUARD --- 
     if (interactionState !== 'listening' && interactionState !== 'retake_prompt') {
       return;
     }
@@ -163,7 +178,10 @@ export default function ExamPage() {
       setFeedback(result);
       if (result.isCorrect) {
         setInteractionState('correct');
-        setScore(s => ({ ...s, correct: s.correct + 1 }));
+        if (!examQuestions[currentQuestionIndex].answeredCorrectly) {
+            setScore(s => ({ ...s, correct: s.correct + 1 }));
+            examQuestions[currentQuestionIndex].answeredCorrectly = true; // Mark as answered correctly to not double count
+        }
         await speak('Correct!');
         handleNextQuestion();
       } else {
@@ -181,15 +199,7 @@ export default function ExamPage() {
       toast({ title: 'Error', description: 'Could not grade answer.', variant: 'destructive' });
       setInteractionState('listening');
     }
-  }, [userAnswer, interactionState, currentQuestion, stopListening, toast, speak, micPermission, startListening, handleNextQuestion]);
-
-  // Debounced submission function
-  const debouncedSubmit = useCallback(_.debounce((answer) => {
-    // Only submit if we are in a listening state and have a valid answer
-    if (interactionState === 'listening' && answer.trim()) {
-      handleSubmit();
-    }
-  }, 1500), [interactionState, handleSubmit]);
+  }, [userAnswer, interactionState, currentQuestion, stopListening, toast, speak, micPermission, startListening, handleNextQuestion, examQuestions]);
   
   useEffect(() => {
     async function loadData() {
@@ -204,43 +214,31 @@ export default function ExamPage() {
   const handleRetryQuestion = useCallback(() => {
     setUserAnswer('');
     setFeedback(null);
-    setInteractionState('idle'); // This will re-trigger the question sequence
+    setInteractionState('idle');
   }, []);
 
-  // Effect to handle automatic submission
   useEffect(() => {
-    // Update the answer from the speech transcript
     if (transcript) {
       setUserAnswer(transcript);
     }
   
-    // Handle the core logic: submitting when the user stops speaking
     if (wasListening.current && !isListening) {
-      // User just stopped speaking
       const finalTranscript = transcript.trim();
   
-      // 1. Handle Retry Prompt First
       if (interactionState === 'retake_prompt') {
         if (finalTranscript && (finalTranscript.toLowerCase().includes('yes') || finalTranscript.toLowerCase().includes('okay'))) {
           handleRetryQuestion();
         }
-        return; // Exit early, we've handled the retry prompt
+        return;
       }
   
-      // 2. Handle Regular Answer Submission
-      // Only submit if we are in the correct state and have an answer
       if (interactionState === 'listening' && finalTranscript) {
-        // Cancel any pending debounced calls and submit immediately
-        debouncedSubmit.cancel();
         handleSubmit();
       }
     }
   
-    // Update the ref for the next render
     wasListening.current = isListening;
-  // Add all necessary dependencies for the linter
-  }, [transcript, isListening, interactionState, handleRetryQuestion, handleSubmit, debouncedSubmit]);
-
+  }, [transcript, isListening, interactionState, handleRetryQuestion, handleSubmit]);
 
   const handleQuestionSequence = useCallback(async () => {
     if (!currentQuestion) return;
@@ -251,7 +249,6 @@ export default function ExamPage() {
       setInteractionState('listening');
       startListening();
     } else {
-      // Fallback for no mic permission
       setInteractionState('listening'); 
     }
   }, [currentQuestion, speak, startListening, micPermission]);
@@ -265,7 +262,7 @@ export default function ExamPage() {
   const startExam = (mode: 'learning') => {
     const categoryQuestions = allQuestions.filter(q => q.category === selectedCategory);
     const shuffled = [...categoryQuestions].sort(() => 0.5 - Math.random());
-    const selectedQuestions = shuffled.slice(0, 5);
+    const selectedQuestions = shuffled.slice(0, 5).map(q => ({ ...q, answeredCorrectly: false }));
     setExamQuestions(selectedQuestions);
     setScore({ correct: 0, total: selectedQuestions.length });
     setExamMode(mode);
@@ -409,8 +406,6 @@ export default function ExamPage() {
               value={userAnswer}
               onChange={(e) => {
                 setUserAnswer(e.target.value);
-                // If user types, we should cancel automatic voice submission
-                debouncedSubmit.cancel();
               }}
               disabled={interactionState !== 'listening' && interactionState !== 'retake_prompt'}
               rows={5}
