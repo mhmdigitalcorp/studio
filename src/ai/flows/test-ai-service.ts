@@ -35,10 +35,10 @@ const testAiServiceFlow = ai.defineFlow(
     // Simulate a network delay
     await new Promise(resolve => setTimeout(resolve, 1000));
 
-    if (!input.apiKey || !input.apiKey.startsWith('sk-')) {
+    if (!input.apiKey || input.apiKey.length < 10) {
        return {
         success: false,
-        message: 'The provided API key is invalid or formatted incorrectly.',
+        message: 'The provided API key appears to be invalid or is too short.',
       };
     }
 
