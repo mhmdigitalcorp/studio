@@ -130,31 +130,22 @@ export default function ExamPage() {
   const currentQuestion = examQuestions[currentQuestionIndex];
   const wasListening = useRef(false);
 
-  // Debounced submission function
-  const debouncedSubmit = useCallback(_.debounce((answer) => {
-    // Only submit if we are in a listening state and have a valid answer
-    if (interactionState === 'listening' && answer.trim()) {
-      handleSubmit();
+  const handleNextQuestion = useCallback(() => {
+    setUserAnswer('');
+    setFeedback(null);
+    if (currentQuestionIndex < examQuestions.length - 1) {
+      setCurrentQuestionIndex(i => i + 1);
+      setInteractionState('idle');
+    } else {
+      setExamState('finished');
     }
-  }, 1500), [interactionState, handleSubmit]);
-  
-  useEffect(() => {
-    async function loadData() {
-      setIsLoading(true);
-      const fetchedQuestions = await fetchQuestions();
-      setAllQuestions(fetchedQuestions);
-      setIsLoading(false);
-    }
-    loadData();
-  }, []);
+  }, [currentQuestionIndex, examQuestions.length]);
 
   const handleSubmit = useCallback(async () => {
     // --- STATE GUARD --- 
     if (interactionState !== 'listening' && interactionState !== 'retake_prompt') {
       return;
     }
-    
-    debouncedSubmit.cancel();
 
     if (!userAnswer.trim()) return;
     
@@ -190,7 +181,31 @@ export default function ExamPage() {
       toast({ title: 'Error', description: 'Could not grade answer.', variant: 'destructive' });
       setInteractionState('listening');
     }
-  }, [userAnswer, interactionState, currentQuestion, debouncedSubmit, stopListening, toast, speak, micPermission, startListening, handleNextQuestion]);
+  }, [userAnswer, interactionState, currentQuestion, stopListening, toast, speak, micPermission, startListening, handleNextQuestion]);
+
+  // Debounced submission function
+  const debouncedSubmit = useCallback(_.debounce((answer) => {
+    // Only submit if we are in a listening state and have a valid answer
+    if (interactionState === 'listening' && answer.trim()) {
+      handleSubmit();
+    }
+  }, 1500), [interactionState, handleSubmit]);
+  
+  useEffect(() => {
+    async function loadData() {
+      setIsLoading(true);
+      const fetchedQuestions = await fetchQuestions();
+      setAllQuestions(fetchedQuestions);
+      setIsLoading(false);
+    }
+    loadData();
+  }, []);
+
+  const handleRetryQuestion = useCallback(() => {
+    setUserAnswer('');
+    setFeedback(null);
+    setInteractionState('idle'); // This will re-trigger the question sequence
+  }, []);
 
   // Effect to handle automatic submission
   useEffect(() => {
@@ -257,23 +272,6 @@ export default function ExamPage() {
     setExamState('ongoing');
     setInteractionState('idle');
   };
-
-  const handleNextQuestion = useCallback(() => {
-    setUserAnswer('');
-    setFeedback(null);
-    if (currentQuestionIndex < examQuestions.length - 1) {
-      setCurrentQuestionIndex(i => i + 1);
-      setInteractionState('idle');
-    } else {
-      setExamState('finished');
-    }
-  }, [currentQuestionIndex, examQuestions.length]);
-
-  const handleRetryQuestion = useCallback(() => {
-    setUserAnswer('');
-    setFeedback(null);
-    setInteractionState('idle'); // This will re-trigger the question sequence
-  }, []);
 
   const handleMicClick = () => {
     if (isListening) {
