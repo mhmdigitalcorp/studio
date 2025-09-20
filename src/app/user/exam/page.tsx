@@ -133,10 +133,10 @@ export default function ExamPage() {
   // Debounced submission function
   const debouncedSubmit = useCallback(_.debounce((answer) => {
     // Only submit if we are in a listening state and have a valid answer
-    if ((interactionState === 'listening' || interactionState === 'retake_prompt') && answer.trim()) {
+    if (interactionState === 'listening' && answer.trim()) {
       handleSubmit();
     }
-  }, 1500), [interactionState]);
+  }, 1500), [interactionState, handleSubmit]);
   
   useEffect(() => {
     async function loadData() {
@@ -153,7 +153,7 @@ export default function ExamPage() {
     if (transcript) {
       setUserAnswer(transcript);
     }
-
+  
     // If we were listening, but now we are not, it means the user stopped talking.
     if (wasListening.current && !isListening && transcript.trim()) {
       // If it's a retake prompt, we check for "yes" immediately without debounce.
@@ -162,16 +162,18 @@ export default function ExamPage() {
         if (confirmation.includes('yes') || confirmation.includes('okay')) {
           debouncedSubmit.cancel(); // Cancel any pending submission
           handleRetryQuestion();
+          return; // Explicitly return to prevent fall-through
         }
-      } else {
-        // For regular answers, use the debounced submission.
-        debouncedSubmit(transcript);
       }
+      
+      // For regular answers, use the debounced submission.
+      debouncedSubmit(transcript);
     }
-
+  
     // Update the ref to track the listening state for the next render.
     wasListening.current = isListening;
-  }, [transcript, isListening, interactionState, debouncedSubmit]);
+  
+  }, [transcript, isListening, interactionState, handleRetryQuestion, debouncedSubmit]);
 
 
   const handleQuestionSequence = useCallback(async () => {
@@ -205,11 +207,11 @@ export default function ExamPage() {
     setInteractionState('idle');
   };
 
-  const handleSubmit = async () => {
+  const handleSubmit = useCallback(async () => {
     // Cancel any pending debounced calls since we are now submitting.
     debouncedSubmit.cancel();
 
-    if (!userAnswer.trim() || (interactionState !== 'listening' && interactionState !== 'retake_prompt')) return;
+    if (!userAnswer.trim() || interactionState !== 'listening') return;
     
     stopListening();
     setInteractionState('processing');
@@ -243,7 +245,7 @@ export default function ExamPage() {
       toast({ title: 'Error', description: 'Could not grade answer.', variant: 'destructive' });
       setInteractionState('listening');
     }
-  };
+  }, [userAnswer, interactionState, currentQuestion, debouncedSubmit, stopListening, toast, speak, micPermission, startListening]);
 
   const handleNextQuestion = () => {
     setUserAnswer('');
@@ -256,11 +258,11 @@ export default function ExamPage() {
     }
   };
 
-  const handleRetryQuestion = () => {
+  const handleRetryQuestion = useCallback(() => {
     setUserAnswer('');
     setFeedback(null);
     setInteractionState('idle'); // This will re-trigger the question sequence
-  };
+  }, []);
 
   const handleMicClick = () => {
     if (isListening) {
