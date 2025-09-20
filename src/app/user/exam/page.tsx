@@ -245,7 +245,11 @@ export default function ExamPage() {
                   <Textarea
                       placeholder={isListening ? "Listening..." : "Speak or type your answer here..."}
                       value={userAnswer}
-                      onChange={(e) => setUserAnswer(e.target.value)}
+                      onChange={(e) => {
+                        setUserAnswer(e.target.value);
+                        if (isListening) stopListening();
+                        if (answerState === 'listening') setAnswerState('idle');
+                      }}
                       disabled={examState === 'feedback' || processingState === 'processing'}
                       rows={5}
                       className="pr-12"
@@ -281,7 +285,7 @@ export default function ExamPage() {
                   </Button>
               </div>
               <Button onClick={handleSubmit} disabled={examState === 'feedback' || !userAnswer.trim() || isListening || processingState === 'processing'} className="w-full">
-                  {answerState === 'processing' ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Send className="mr-2 h-4 w-4" />}
+                  {answerState === 'processing' || processingState === 'processing' ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Send className="mr-2 h-4 w-4" />}
                   Submit Answer
               </Button>
           </CardContent>
