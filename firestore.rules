@@ -1,28 +1,57 @@
 rules_version = '2';
-
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    // Helper function to get user role
     function getUserRole(userId) {
       return get(/databases/$(database)/documents/users/$(userId)).data.role;
     }
 
-    // Users can read their own profile, admins can read all.
-    // Users can create their own profile upon sign-up.
-    match /users/{userId} {
-      allow read: if request.auth != null && (request.auth.uid == userId || getUserRole(request.auth.uid) == 'admin');
-      allow create: if request.auth != null && request.auth.uid == userId;
-      allow update: if request.auth != null && request.auth.uid == userId;
-       // Deletes are handled by backend flows with admin privileges
-      allow delete: if false;
+    function isAdmin(userId) {
+      return request.auth != null && getUserRole(userId) == 'admin';
     }
 
-    // Anyone can read questions for learning.
-    // Writes are handled by backend flows with admin privileges.
+    function isUser(userId) {
+      return request.auth != null && request.auth.uid == userId;
+    }
+
+    // --- Users Collection ---
+    // User creation MUST be handled by a secure backend function (e.g., Cloud Function)
+    // to prevent users from assigning themselves admin roles.
+    match /users/{userId} {
+      // Admins can read any user's data. Users can only read their own.
+      allow read: if request.auth != null && (isUser(userId) || isAdmin(request.auth.uid));
+
+      // Users can only update their own name and phone number.
+      // Crucially, they cannot change their role.
+      allow update: if isUser(userId) &&
+        request.resource.data.keys().hasOnly(['name', 'phone', 'avatar']) &&
+        request.resource.data.role == resource.data.role;
+
+      // Client-side creation and deletion is disabled for security.
+      allow create, delete: if false;
+    }
+
+    // --- Questions Collection ---
+    // Anyone can read questions for learning and exams.
+    // Only admins can create, update, or delete them.
     match /questions/{questionId} {
       allow read: if true;
-      allow write: if false;
+      // Admin write access is implicitly handled by backend flows using the Admin SDK,
+      // which bypasses these rules. This rule provides an extra layer of security.
+      allow write: if isAdmin(request.auth.uid);
     }
+
+    // By default, all other collections are locked down unless explicitly allowed.
+    // Placeholder rules for future collections:
+    /*
+    match /userExamAttempts/{attemptId} {
+      allow read, write: if request.auth != null && request.auth.uid == resource.data.userId;
+    }
+
+    match /ttsCache/{cacheId} {
+      allow read: if true;
+      allow write: if false; // Only backend can write
+    }
+    */
   }
 }
