@@ -69,7 +69,7 @@ export default function SettingsPage() {
     const { success, settings: fetchedSettings } = await manageSettings({ action: 'get' });
     if (success && fetchedSettings) {
       setSettings(fetchedSettings);
-      setDialogSettings(fetchedSettings); // Also sync dialog state on initial load
+      // setDialogSettings(fetchedSettings); This is now handled by a dedicated useEffect
       setIsEmailEnabled(fetchedSettings.provider !== 'none');
       setIsAiEnabled(!!fetchedSettings.aiApiKey);
     }
@@ -79,6 +79,11 @@ export default function SettingsPage() {
   useEffect(() => {
     loadSettings();
   }, [loadSettings]);
+  
+  // This useEffect ensures the dialog state is always in sync with the main settings state.
+  useEffect(() => {
+    setDialogSettings(settings);
+  }, [settings]);
 
   useEffect(() => {
     if (!isEmailEnabled) {
@@ -101,12 +106,11 @@ export default function SettingsPage() {
 
     if (result.success && result.settings) {
         setSettings(result.settings);
-        setDialogSettings(result.settings); // Keep dialog state in sync
         toast({
             title: "Settings Saved",
             description: "Your configuration has been updated.",
         });
-        setConfigDialogOpen(false); // Close dialog on successful save from anywhere
+        setConfigDialogOpen(false);
     } else {
         toast({ title: "Error Saving Settings", description: result.message, variant: "destructive" });
     }
@@ -116,7 +120,15 @@ export default function SettingsPage() {
   const handleToggleEmailService = (enabled: boolean) => {
     setIsEmailEnabled(enabled);
     if (!enabled) {
-        handleSaveSettings({ provider: 'none' });
+        handleSaveSettings({ 
+          provider: 'none',
+          fromEmail: '',
+          sendgridKey: '',
+          smtpHost: '',
+          smtpPort: '',
+          smtpUser: '',
+          smtpPass: '',
+        });
     }
   };
   
@@ -128,11 +140,18 @@ export default function SettingsPage() {
   };
   
   const handleTestEmailService = async () => {
-    if (!settings.provider || settings.provider === 'none') return;
+    if (!settings.provider || settings.provider === 'none' || !settings.fromEmail) {
+      toast({
+        title: "Configuration Incomplete",
+        description: "Please configure an email provider and a 'From' email address before testing.",
+        variant: "destructive"
+      });
+      return;
+    }
     setIsTestingEmail(true);
     try {
         const result = await testEmailService({
-            recipient: 'admin@learnflow.app'
+            recipient: settings.fromEmail,
         });
 
         if (result.success) {
@@ -168,6 +187,24 @@ export default function SettingsPage() {
     }
     setIsTestingAi(false);
   }
+
+  const validateAndSaveDialogSettings = () => {
+    if (dialogSettings.provider === 'sendgrid' && !dialogSettings.sendgridKey) {
+      toast({ title: "Validation Error", description: "SendGrid API key is required.", variant: "destructive" });
+      return;
+    }
+    if (dialogSettings.provider === 'smtp') {
+      if (!dialogSettings.smtpHost || !dialogSettings.smtpPort || !dialogSettings.smtpUser || !dialogSettings.smtpPass) {
+        toast({ title: "Validation Error", description: "All SMTP fields are required.", variant: "destructive" });
+        return;
+      }
+    }
+    if ((dialogSettings.provider === 'sendgrid' || dialogSettings.provider === 'smtp') && !dialogSettings.fromEmail) {
+      toast({ title: "Validation Error", description: "A 'From' email address is required.", variant: "destructive" });
+      return;
+    }
+    handleSaveSettings(dialogSettings);
+  };
   
   if (isLoading) {
     return <div className="flex h-64 items-center justify-center"><Loader2 className="h-8 w-8 animate-spin" /></div>;
@@ -365,7 +402,7 @@ export default function SettingsPage() {
             <DialogClose asChild>
               <Button variant="outline" disabled={isSaving}>Cancel</Button>
             </DialogClose>
-            <Button onClick={() => handleSaveSettings(dialogSettings)} disabled={dialogSettings.provider === 'gmail' || isSaving}>
+            <Button onClick={validateAndSaveDialogSettings} disabled={dialogSettings.provider === 'gmail' || isSaving}>
               {isSaving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
               Save Configuration
             </Button>
