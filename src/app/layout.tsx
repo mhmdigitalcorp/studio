@@ -1,18 +1,20 @@
+// @refresh reset
+'use client';
 import type { Metadata } from 'next';
 import { Toaster } from '@/components/ui/toaster';
 import './globals.css';
 import { cn } from '@/lib/utils';
-
-export const metadata: Metadata = {
-  title: 'LearnFlow',
-  description: 'An AI-powered web app for voice-driven learning and exams.',
-};
+import { AuthProvider } from '@/context/AuthContext';
+import { usePathname } from 'next/navigation';
 
 export default function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  const pathname = usePathname();
+  const isAuthPage = pathname.includes('/auth');
+
   return (
     <html lang="en" className="dark">
       <head>
@@ -28,7 +30,9 @@ export default function RootLayout({
         />
       </head>
       <body className={cn('font-body antialiased min-h-screen')}>
-        {children}
+        <AuthProvider>
+          {isAuthPage ? children : <>{children}</>}
+        </AuthProvider>
         <Toaster />
       </body>
     </html>
