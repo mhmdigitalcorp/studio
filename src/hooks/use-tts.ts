@@ -1,7 +1,10 @@
 'use client';
-import { useCallback } from 'react';
+import { useCallback, useState, useRef } from 'react';
 
 export const useTTS = () => {
+  const [isSpeaking, setIsSpeaking] = useState(false);
+  const utteranceRef = useRef<SpeechSynthesisUtterance | null>(null);
+
   const speak = useCallback(async (text: string) => {
     // Stop any currently speaking utterance before starting a new one
     if (window.speechSynthesis.speaking) {
@@ -11,16 +14,22 @@ export const useTTS = () => {
     if ('speechSynthesis' in window) {
       const utterance = new SpeechSynthesisUtterance(text);
       utterance.lang = 'en-US';
+      utteranceRef.current = utterance;
       
       return new Promise<void>((resolve, reject) => {
-        utterance.onend = () => resolve();
+        utterance.onstart = () => setIsSpeaking(true);
+        utterance.onend = () => {
+          setIsSpeaking(false);
+          utteranceRef.current = null;
+          resolve();
+        };
         utterance.onerror = (event: SpeechSynthesisErrorEvent) => {
-            // The 'interrupted' error is not critical and can be ignored
-            if (event.error === 'interrupted') {
-              resolve(); // Resolve the promise as if it completed successfully
+            setIsSpeaking(false);
+            utteranceRef.current = null;
+            if (event.error === 'interrupted' || event.error === 'canceled') {
+              resolve(); // Resolve promise if speech is intentionally stopped
               return;
             }
-            // Create a more informative error object for other errors
             reject(new Error(`Speech synthesis error: ${event.error}`));
         };
         window.speechSynthesis.speak(utterance);
@@ -31,5 +40,5 @@ export const useTTS = () => {
     }
   }, []);
 
-  return { speak };
+  return { speak, isSpeaking };
 };
