@@ -1,4 +1,5 @@
 
+
 'use client';
 
 import { useState, useMemo, useCallback, useEffect } from 'react';
@@ -552,7 +553,8 @@ export default function EmailsPage() {
     if (!settings || !settings.provider || settings.provider === 'none') {
       return 'not-configured';
     }
-    return 'operational'; // Can be expanded with a test check
+    // This is a simplification. A real app might have a status check endpoint.
+    return 'operational';
   }, [settings]);
 
   useEffect(() => {
@@ -659,7 +661,7 @@ export default function EmailsPage() {
       setIsSaving(true);
 
       if (status === 'Sent') {
-         if (emailServiceStatus !== 'operational') {
+         if (!settings || !settings.provider || settings.provider === 'none') {
            toast({
              title: 'Email Send Failed',
              description: 'Email service is not configured. Please configure it in Settings.',
@@ -707,7 +709,7 @@ export default function EmailsPage() {
       setIsSaving(false);
       setView('manager');
     },
-    [composerState, campaigns, getRecipientCount, getRecipientSummary, toast, emailServiceStatus]
+    [composerState, campaigns, getRecipientCount, getRecipientSummary, toast, settings]
   );
 
   const recipientLabels: { [key: string]: string } = useMemo(
@@ -889,5 +891,3 @@ export default function EmailsPage() {
     />
   );
 }
-
-    
