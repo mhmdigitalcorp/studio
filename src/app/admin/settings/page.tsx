@@ -1,6 +1,7 @@
+
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import {
   Card,
   CardContent,
@@ -39,6 +40,16 @@ import { testAiService } from '@/ai/flows/test-ai-service';
 type ServiceStatus = 'operational' | 'degraded' | 'not-configured' | 'disabled';
 type EmailService = 'none' | 'sendgrid' | 'smtp' | 'gmail';
 
+type EmailConfig = {
+  provider: EmailService;
+  fromEmail: string;
+  sendgridKey?: string;
+  smtpHost?: string;
+  smtpPort?: string;
+  smtpUser?: string;
+  smtpPass?: string;
+};
+
 const statusConfig: Record<ServiceStatus, { text: string; className: string; icon: React.ReactNode }> = {
   'operational': { text: 'Operational', className: 'bg-green-500', icon: <CheckCircle2 className="h-4 w-4" /> },
   'degraded': { text: 'Degraded', className: 'bg-yellow-500', icon: <AlertTriangle className="h-4 w-4" /> },
@@ -49,11 +60,19 @@ const statusConfig: Record<ServiceStatus, { text: string; className: string; ico
 
 export default function SettingsPage() {
   const [isConfigDialogOpen, setConfigDialogOpen] = useState(false);
-  const [emailService, setEmailService] = useState<EmailService>('none');
-  const [emailStatus, setEmailStatus] = useState<ServiceStatus>('not-configured');
   const [isEmailEnabled, setIsEmailEnabled] = useState(true);
   const [isTestingEmail, setIsTestingEmail] = useState(false);
-  const [fromEmail, setFromEmail] = useState('noreply@learnflow.app');
+
+  // State to hold the full saved configuration
+  const [emailConfig, setEmailConfig] = useState<EmailConfig>({
+    provider: 'none',
+    fromEmail: 'noreply@learnflow.app',
+  });
+
+  // Temporary state for the dialog form
+  const [dialogEmailConfig, setDialogEmailConfig] = useState<EmailConfig>(emailConfig);
+  
+  const [emailStatus, setEmailStatus] = useState<ServiceStatus>('not-configured');
   
   const [aiApiKey, setAiApiKey] = useState('');
   const [aiStatus, setAiStatus] = useState<ServiceStatus>('not-configured');
@@ -62,6 +81,22 @@ export default function SettingsPage() {
   const [isSavingAi, setIsSavingAi] = useState(false);
 
   const { toast } = useToast();
+  
+  // Sync dialog state when main config changes
+  useEffect(() => {
+    setDialogEmailConfig(emailConfig);
+    if (isEmailEnabled) {
+      setEmailStatus(emailConfig.provider === 'none' ? 'not-configured' : 'operational');
+    } else {
+      setEmailStatus('disabled');
+    }
+  }, [emailConfig, isEmailEnabled]);
+  
+  // Pre-fill dialog when it opens
+  const openConfigureDialog = () => {
+    setDialogEmailConfig(emailConfig);
+    setConfigDialogOpen(true);
+  };
 
   const handleToggleEmailService = (enabled: boolean) => {
     setIsEmailEnabled(enabled);
@@ -69,7 +104,7 @@ export default function SettingsPage() {
       setEmailStatus('disabled');
     } else {
       // Revert to previous status or re-check
-      setEmailStatus(emailService === 'none' ? 'not-configured' : 'operational');
+      setEmailStatus(emailConfig.provider === 'none' ? 'not-configured' : 'operational');
     }
   };
   
@@ -83,16 +118,15 @@ export default function SettingsPage() {
   };
 
   const handleSaveConfiguration = () => {
-    // This function would typically save to a secure backend.
-    // Here we are just updating the local state to reflect the changes.
-    if (emailService !== 'none') {
-        setEmailStatus('operational');
+    // This function now saves from the dialog's state to the main component's state
+    setEmailConfig(dialogEmailConfig);
+
+    if (dialogEmailConfig.provider !== 'none') {
         toast({
             title: "Configuration Saved",
-            description: `Email service is now set to ${emailService}.`,
+            description: `Email service is now set to ${dialogEmailConfig.provider}.`,
         });
     } else {
-        setEmailStatus('not-configured');
         toast({
             title: "Configuration Cleared",
             description: "Email service provider has been unset.",
@@ -106,8 +140,8 @@ export default function SettingsPage() {
     setIsTestingEmail(true);
     try {
         const result = await testEmailService({
-            service: emailService,
-            recipient: fromEmail
+            service: emailConfig.provider,
+            recipient: emailConfig.fromEmail
         });
 
         if (result.success) {
@@ -270,12 +304,17 @@ export default function SettingsPage() {
                 <div>
                   <h4 className="font-medium">Current Provider</h4>
                   <p className="text-muted-foreground text-sm">
-                    {emailService === 'none' ? 'No provider configured' : `Using ${emailService}`}
+                    {emailConfig.provider === 'none' ? 'No provider configured' : `Using ${emailConfig.provider}`}
                   </p>
+                   {emailConfig.provider !== 'none' && (
+                    <p className="text-muted-foreground text-sm mt-1">
+                      From: {emailConfig.fromEmail}
+                    </p>
+                  )}
                 </div>
                 <div className="flex gap-2">
-                    <Button variant="outline" onClick={() => setConfigDialogOpen(true)} disabled={!isEmailEnabled}>Configure</Button>
-                    <Button variant="secondary" disabled={!isEmailEnabled || emailService === 'none' || isTestingEmail} onClick={handleTestEmailService}>
+                    <Button variant="outline" onClick={openConfigureDialog} disabled={!isEmailEnabled}>Configure</Button>
+                    <Button variant="secondary" disabled={!isEmailEnabled || emailConfig.provider === 'none' || isTestingEmail} onClick={handleTestEmailService}>
                         {isTestingEmail ? (
                             <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                         ) : (
@@ -299,7 +338,10 @@ export default function SettingsPage() {
           <div className="space-y-4 py-4">
             <div className="space-y-2">
               <Label>Email Provider</Label>
-              <Select value={emailService} onValueChange={(value) => setEmailService(value as EmailService)}>
+              <Select 
+                value={dialogEmailConfig.provider} 
+                onValueChange={(value) => setDialogEmailConfig(prev => ({...prev, provider: value as EmailService}))}
+              >
                 <SelectTrigger>
                   <SelectValue placeholder="Select a provider" />
                 </SelectTrigger>
@@ -312,45 +354,45 @@ export default function SettingsPage() {
               </Select>
             </div>
 
-            {emailService === 'sendgrid' && (
+            {dialogEmailConfig.provider === 'sendgrid' && (
               <div className="space-y-2 p-4 border rounded-md animate-in fade-in-50">
                  <Label htmlFor="sendgrid-key">SendGrid API Key</Label>
-                 <Input id="sendgrid-key" type="password" placeholder="SG.xxxxxxxx" />
+                 <Input id="sendgrid-key" type="password" placeholder="SG.xxxxxxxx" value={dialogEmailConfig.sendgridKey || ''} onChange={e => setDialogEmailConfig(prev => ({...prev, sendgridKey: e.target.value}))}/>
               </div>
             )}
             
-            {emailService === 'smtp' && (
+            {dialogEmailConfig.provider === 'smtp' && (
               <div className="space-y-4 p-4 border rounded-md animate-in fade-in-50">
                  <div className="space-y-2">
                     <Label htmlFor="smtp-host">SMTP Host</Label>
-                    <Input id="smtp-host" placeholder="smtp.example.com" />
+                    <Input id="smtp-host" placeholder="smtp.example.com" value={dialogEmailConfig.smtpHost || ''} onChange={e => setDialogEmailConfig(prev => ({...prev, smtpHost: e.target.value}))}/>
                  </div>
                  <div className="grid grid-cols-2 gap-4">
                     <div className="space-y-2">
                         <Label htmlFor="smtp-port">Port</Label>
-                        <Input id="smtp-port" type="number" placeholder="587" />
+                        <Input id="smtp-port" type="number" placeholder="587" value={dialogEmailConfig.smtpPort || ''} onChange={e => setDialogEmailConfig(prev => ({...prev, smtpPort: e.target.value}))}/>
                     </div>
                      <div className="space-y-2">
                         <Label htmlFor="smtp-user">Username</Label>
-                        <Input id="smtp-user" placeholder="your-username" />
+                        <Input id="smtp-user" placeholder="your-username" value={dialogEmailConfig.smtpUser || ''} onChange={e => setDialogEmailConfig(prev => ({...prev, smtpUser: e.target.value}))}/>
                     </div>
                  </div>
                  <div className="space-y-2">
                     <Label htmlFor="smtp-pass">Password</Label>
-                    <Input id="smtp-pass" type="password" />
+                    <Input id="smtp-pass" type="password" value={dialogEmailConfig.smtpPass || ''} onChange={e => setDialogEmailConfig(prev => ({...prev, smtpPass: e.target.value}))}/>
                  </div>
               </div>
             )}
 
-            {(emailService === 'sendgrid' || emailService === 'smtp') && (
+            {(dialogEmailConfig.provider === 'sendgrid' || dialogEmailConfig.provider === 'smtp') && (
               <div className="space-y-2">
                 <Label htmlFor="from-email">Default 'From' Email</Label>
                 <Input 
                   id="from-email" 
                   type="email" 
                   placeholder="noreply@learnflow.app" 
-                  value={fromEmail}
-                  onChange={(e) => setFromEmail(e.target.value)}
+                  value={dialogEmailConfig.fromEmail}
+                  onChange={(e) => setDialogEmailConfig(prev => ({...prev, fromEmail: e.target.value}))}
                 />
               </div>
             )}
@@ -359,10 +401,12 @@ export default function SettingsPage() {
             <DialogClose asChild>
               <Button variant="outline">Cancel</Button>
             </DialogClose>
-            <Button onClick={handleSaveConfiguration} disabled={emailService === 'none'}>Save Configuration</Button>
+            <Button onClick={handleSaveConfiguration} disabled={dialogEmailConfig.provider === 'gmail'}>Save Configuration</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
     </div>
   );
 }
+
+    
