@@ -111,6 +111,8 @@ export default function UsersPage() {
   });
   const fileInputRef = useRef<HTMLInputElement>(null);
   const { toast } = useToast();
+  const [isViewDialogOpen, setViewDialogOpen] = useState(false);
+  const [userToView, setUserToView] = useState<User | null>(null);
 
   const loadUsers = useCallback(async () => {
     setIsLoading(true);
@@ -236,6 +238,10 @@ export default function UsersPage() {
     document.body.removeChild(link);
   };
 
+  const handleOpenViewDialog = (user: User) => {
+    setUserToView(user);
+    setViewDialogOpen(true);
+  };
 
   return (
     <>
@@ -416,7 +422,9 @@ export default function UsersPage() {
                             </Button>
                           </DropdownMenuTrigger>
                           <DropdownMenuContent align="end">
-                            <DropdownMenuItem>View Details</DropdownMenuItem>
+                            <DropdownMenuItem onClick={() => handleOpenViewDialog(user)}>
+                              View Details
+                            </DropdownMenuItem>
                             <DropdownMenuItem>Reset Password</DropdownMenuItem>
                             <DropdownMenuItem className="text-destructive">
                               Deactivate User
@@ -545,8 +553,7 @@ export default function UsersPage() {
               <Mail /> Compose Email
             </DialogTitle>
             <DialogDescription>
-              Sending to {selectedUsers.length} user(s). You can generate content
-              with AI.
+              Sending to {selectedUsers.length} user(s). You can generate content with AI.
             </DialogDescription>
           </DialogHeader>
           <div className="grid gap-4 py-4">
@@ -579,6 +586,53 @@ export default function UsersPage() {
             </Button>
             <DialogClose asChild>
               <Button>Send Email</Button>
+            </DialogClose>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+      
+      {/* View User Details Dialog */}
+      <Dialog open={isViewDialogOpen} onOpenChange={setViewDialogOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="font-headline">User Details</DialogTitle>
+            <DialogDescription>
+              Detailed information for {userToView?.name}.
+            </DialogDescription>
+          </DialogHeader>
+          {userToView && (
+            <div className="grid gap-4 py-4">
+              <div className="grid grid-cols-4 items-center gap-4">
+                <Label htmlFor="view-name" className="text-right">
+                  Name
+                </Label>
+                <Input id="view-name" value={userToView.name} className="col-span-3" readOnly />
+              </div>
+              <div className="grid grid-cols-4 items-center gap-4">
+                <Label htmlFor="view-email" className="text-right">
+                  Email
+                </Label>
+                <Input id="view-email" value={userToView.email} className="col-span-3" readOnly />
+              </div>
+              <div className="grid grid-cols-4 items-center gap-4">
+                <Label htmlFor="view-status" className="text-right">
+                  Status
+                </Label>
+                <Input id="view-status" value={userToView.status} className="col-span-3" readOnly />
+              </div>
+              <div className="grid grid-cols-4 items-center gap-4">
+                <Label htmlFor="view-progress" className="text-right">
+                  Progress
+                </Label>
+                <Input id="view-progress" value={`${userToView.progress}%`} className="col-span-3" readOnly />
+              </div>
+            </div>
+          )}
+          <DialogFooter>
+            <DialogClose asChild>
+              <Button type="button" variant="secondary">
+                Close
+              </Button>
             </DialogClose>
           </DialogFooter>
         </DialogContent>
