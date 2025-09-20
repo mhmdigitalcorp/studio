@@ -99,7 +99,7 @@ const generateVoiceLessonsFlow = ai.defineFlow(
           },
         },
       },
-      prompt: input.answer,
+      prompt: `The answer is, ${input.answer}`,
     });
 
     if (!answerResult.media) {
