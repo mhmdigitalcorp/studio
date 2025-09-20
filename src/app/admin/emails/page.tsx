@@ -382,6 +382,10 @@ export default function EmailsPage() {
               <Label>Key Points / Topic</Label>
               <Textarea placeholder="e.g., Announce the launch of our new History learning category." value={aiFormState.topic} onChange={e => setAiFormState(prev => ({...prev, topic: e.target.value}))}/>
             </div>
+             <div className="grid gap-2">
+              <Label>Additional Instructions</Label>
+              <Textarea placeholder="e.g., Keep it concise, under 150 words." value={aiFormState.additionalInstructions} onChange={e => setAiFormState(prev => ({...prev, additionalInstructions: e.target.value}))}/>
+            </div>
           </div>
           <DialogFooter>
             <DialogClose asChild><Button variant="outline">Cancel</Button></DialogClose>
