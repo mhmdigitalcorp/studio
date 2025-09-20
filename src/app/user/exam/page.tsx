@@ -1,5 +1,5 @@
 'use client';
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardFooter, CardDescription } from '@/components/ui/card';
 import { Textarea } from '@/components/ui/textarea';
@@ -29,6 +29,7 @@ export default function ExamPage() {
   const [score, setScore] = useState({ correct: 0, total: 0 });
   const [answerState, setAnswerState] = useState<AnswerState>('idle');
   const [processingState, setProcessingState] = useState<'idle' | 'processing' | 'graded'>('idle');
+  const hasQuestionBeenSpoken = useRef(false);
 
   const { isListening, transcript, startListening, stopListening } = useSpeechRecognition();
   const { speak } = useTTS();
@@ -60,6 +61,11 @@ export default function ExamPage() {
 
   const currentQuestion = examQuestions[currentQuestionIndex];
   
+  // Reset the spoken flag when question changes
+  useEffect(() => {
+    hasQuestionBeenSpoken.current = false;
+  }, [currentQuestion]);
+
   const handleMicClick = useCallback(() => {
     if (isListening) {
       stopListening();
@@ -69,12 +75,13 @@ export default function ExamPage() {
     }
   }, [isListening, startListening, stopListening]);
 
-  // Separate effects for TTS and microphone control
+  // Effect for speaking questions - only once per question
   useEffect(() => {
-    if (examState === 'ongoing' && currentQuestion) {
+    if (examState === 'ongoing' && currentQuestion && !hasQuestionBeenSpoken.current) {
+      hasQuestionBeenSpoken.current = true;
       speak(currentQuestion.question).catch(error => {
         console.error("TTS Error:", error);
-        // Fallback to manual microphone start
+        // Fallback to manual microphone start if TTS fails
         if (!isListening) {
           startListening();
         }
@@ -82,11 +89,15 @@ export default function ExamPage() {
     }
   }, [examState, currentQuestion, speak, isListening, startListening]);
 
+  // Effect for starting listening after question is spoken
   useEffect(() => {
     if (examState === 'ongoing' && currentQuestion && !isListening) {
+      // Wait a bit longer to ensure TTS has finished or failed
       const timer = setTimeout(() => {
-        startListening();
-      }, 800); 
+        if (!isListening) {
+          startListening();
+        }
+      }, 1200); // Increased delay to ensure TTS has time to start
       
       return () => clearTimeout(timer);
     }
