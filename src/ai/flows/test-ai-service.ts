@@ -6,12 +6,12 @@
 import { ai } from '@/ai/genkit';
 import { z } from 'zod';
 
-export const TestAiServiceInputSchema = z.object({
+const TestAiServiceInputSchema = z.object({
   apiKey: z.string().describe('The AI API key to test.'),
 });
 export type TestAiServiceInput = z.infer<typeof TestAiServiceInputSchema>;
 
-export const TestAiServiceOutputSchema = z.object({
+const TestAiServiceOutputSchema = z.object({
   success: z.boolean().describe('Whether the test was successful.'),
   message: z.string().describe('A message indicating the result of the test.'),
 });
