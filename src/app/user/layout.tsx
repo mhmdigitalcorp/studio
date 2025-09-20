@@ -10,6 +10,9 @@ import {
   SheetContent,
   SheetTrigger,
   SheetClose,
+  SheetHeader,
+  SheetTitle,
+  SheetDescription,
 } from '@/components/ui/sheet';
 import { usePathname } from 'next/navigation';
 import { cn } from '@/lib/utils';
@@ -59,6 +62,10 @@ export default function UserLayout({
               </Button>
             </SheetTrigger>
             <SheetContent side="right">
+              <SheetHeader className="sr-only">
+                <SheetTitle>Mobile Menu</SheetTitle>
+                <SheetDescription>Navigation links for the user portal.</SheetDescription>
+              </SheetHeader>
               <nav className="grid gap-6 text-lg font-medium mt-8">
                 {navItems.map(item => (
                   <SheetClose asChild key={item.href}>
