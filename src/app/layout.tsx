@@ -12,9 +12,6 @@ export default function RootLayout({
 }: Readonly<{
   children: React.ReactNode;
 }>) {
-  const pathname = usePathname();
-  const isAuthPage = pathname.includes('/auth');
-
   return (
     <html lang="en" className="dark">
       <head>
@@ -31,7 +28,7 @@ export default function RootLayout({
       </head>
       <body className={cn('font-body antialiased min-h-screen')}>
         <AuthProvider>
-          {isAuthPage ? children : <>{children}</>}
+          {children}
         </AuthProvider>
         <Toaster />
       </body>
