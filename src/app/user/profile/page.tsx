@@ -176,7 +176,7 @@ export default function UserProfilePage() {
                 <AlertTitle>Microphone Access</AlertTitle>
                 <AlertDescription>
                   Microphone access will be requested when you start an exam.
-                </Aler
+                </AlertDescription>
               </Alert>
             )}
           </CardContent>
