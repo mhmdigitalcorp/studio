@@ -1,3 +1,4 @@
+
 'use server';
 
 /**
@@ -14,7 +15,7 @@
 import {ai} from '@/ai/genkit';
 import {z} from 'genkit';
 import wav from 'wav';
-import {db, storage as adminStorage} from '@/lib/firebase-admin'; // Using admin SDK for DB and Storage
+import {db, storage} from '@/lib/firebase-admin'; // Using admin SDK for DB and Storage
 import {createHash} from 'crypto';
 
 const GenerateVoiceLessonsInputSchema = z.object({
@@ -100,20 +101,46 @@ async function processAudio(result: any): Promise<string> {
   return `data:audio/wav;base64,${await toWav(audioBuffer)}`;
 }
 
-async function uploadToStorage(bucket: any, cacheId: string, type: 'question' | 'answer', dataUri: string): Promise<string> {
-  const fileName = `audio/${cacheId}_${type}.wav`;
-  const file = bucket.file(fileName);
-  
-  await file.save(Buffer.from(dataUri.split(',')[1], 'base64'), {
-    metadata: { contentType: 'audio/wav' }
-  });
+async function uploadToStorage(cacheId: string, type: 'question' | 'answer', dataUri: string): Promise<string> {
+  try {
+    const bucketName = process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET;
+    if (!bucketName) {
+      throw new Error('Storage bucket name not configured. Please set NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET environment variable.');
+    }
 
-  const [url] = await file.getSignedUrl({
-    action: 'read',
-    expires: '03-09-2491' // A very far-future date
-  });
+    const bucket = storage.bucket(bucketName);
+    
+    const [exists] = await bucket.exists();
+    if (!exists) {
+      throw new Error(`Storage bucket "${bucketName}" does not exist. Please create it in Firebase Console.`);
+    }
 
-  return url;
+    const fileName = `audio/${cacheId}_${type}.wav`;
+    const file = bucket.file(fileName);
+    
+    const fileBuffer = Buffer.from(dataUri.split(',')[1], 'base64');
+    
+    await file.save(fileBuffer, {
+      metadata: {
+        contentType: 'audio/wav',
+        cacheControl: 'public, max-age=31536000', // 1 year cache
+      },
+    });
+
+    await file.makePublic();
+
+    return `https://storage.googleapis.com/${bucketName}/${fileName}`;
+    
+  } catch (error) {
+    console.error('Failed to upload to Cloud Storage:', error);
+    
+    if (dataUri.length < 900000) { 
+      console.log('Using data URI as fallback for audio storage');
+      return dataUri;
+    } else {
+      throw new Error('Audio file too large for fallback storage');
+    }
+  }
 }
 
 const generateVoiceLessonsFlow = ai.defineFlow(
@@ -128,46 +155,64 @@ const generateVoiceLessonsFlow = ai.defineFlow(
       .digest('hex');
     const cacheRef = db.collection('ttsCache').doc(cacheId);
 
-    // 1. Check cache with expiration (30 days)
-    const cachedDoc = await cacheRef.get();
-    if (cachedDoc.exists) {
-      const data = cachedDoc.data();
-      if (data && data.createdAt) {
-        const cacheAge = Date.now() - data.createdAt.toDate().getTime();
-        const maxAge = 30 * 24 * 60 * 60 * 1000; // 30 days
-        
-        if (cacheAge < maxAge) {
-          return {
-            questionAudio: data.questionAudio,
-            answerAudio: data.answerAudio,
-          };
+    try {
+      // 1. Check cache with expiration (30 days)
+      const cachedDoc = await cacheRef.get();
+      if (cachedDoc.exists) {
+        const data = cachedDoc.data();
+        if (data && data.createdAt) {
+          const cacheAge = Date.now() - data.createdAt.toDate().getTime();
+          const maxAge = 30 * 24 * 60 * 60 * 1000; // 30 days
+          
+          if (cacheAge < maxAge) {
+            return {
+              questionAudio: data.questionAudio,
+              answerAudio: data.answerAudio,
+            };
+          }
         }
       }
+
+      // 2. If not cached or expired, generate TTS with retry logic
+      const questionResult = await generateTTSWithRetry(input.question);
+      const answerResult = await generateTTSWithRetry(`The answer is, ${input.answer}`);
+
+      // 3. Process audio to WAV format
+      const questionWavDataUri = await processAudio(questionResult);
+      const answerWavDataUri = await processAudio(answerResult);
+
+      // 4. Try to store in Cloud Storage, fallback to data URI if needed
+      let questionUrl: string;
+      let answerUrl: string;
+
+      try {
+        questionUrl = await uploadToStorage(cacheId, 'question', questionWavDataUri);
+        answerUrl = await uploadToStorage(cacheId, 'answer', answerWavDataUri);
+      } catch (storageError) {
+        console.error('Storage failed, using data URIs:', storageError);
+        questionUrl = questionWavDataUri;
+        answerUrl = answerWavDataUri;
+      }
+
+      // 5. Save URLs and timestamp in Firestore
+      if (!questionUrl.startsWith('data:') && !answerUrl.startsWith('data:')) {
+        await cacheRef.set({
+          questionAudio: questionUrl,
+          answerAudio: answerUrl,
+          createdAt: new Date()
+        });
+      } else {
+        console.log('Skipping Firestore cache for data URIs (size considerations)');
+      }
+
+      return {
+        questionAudio: questionUrl,
+        answerAudio: answerUrl,
+      };
+
+    } catch (error: any) {
+      console.error('Error in generateVoiceLessonsFlow:', error);
+      throw new Error(`Failed to generate voice lessons: ${error.message}`);
     }
-
-    // 2. If not cached or expired, generate TTS with retry logic
-    const questionResult = await generateTTSWithRetry(input.question);
-    const answerResult = await generateTTSWithRetry(`The answer is, ${input.answer}`);
-
-    // 3. Process audio to WAV format
-    const questionWavDataUri = await processAudio(questionResult);
-    const answerWavDataUri = await processAudio(answerResult);
-
-    // 4. Store in Cloud Storage
-    const bucket = adminStorage.bucket();
-    const questionUrl = await uploadToStorage(bucket, cacheId, 'question', questionWavDataUri);
-    const answerUrl = await uploadToStorage(bucket, cacheId, 'answer', answerWavDataUri);
-
-    // 5. Save public URLs and timestamp in Firestore
-    await cacheRef.set({
-      questionAudio: questionUrl,
-      answerAudio: answerUrl,
-      createdAt: new Date()
-    });
-
-    return {
-      questionAudio: questionUrl,
-      answerAudio: answerUrl,
-    };
   }
 );
