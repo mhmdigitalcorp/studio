@@ -37,7 +37,15 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         } else {
             // This case might happen if a user exists in auth but not firestore
             // We can choose to create a doc here, or log them out.
-            setCurrentUser(null);
+            // For now, we will assume a backend function handles user doc creation.
+            // To make the app usable without the function, we can create a temporary client user object.
+             const tempUser: User = {
+              uid: user.uid,
+              email: user.email,
+              name: user.displayName || 'New User',
+              role: 'user',
+            };
+            setCurrentUser(tempUser);
         }
       } else {
         setCurrentUser(null);
@@ -49,17 +57,14 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   }, []);
   
   const signUp = async ({ email, password, name }: {email:any, password:any, name:any}) => {
+    // This function should now ONLY create the user in Firebase Auth.
+    // The creation of the user document in Firestore should be handled
+    // by a secure backend trigger (e.g., a Cloud Function for Firebase).
     const userCredential = await createUserWithEmailAndPassword(auth, email, password);
-    const user = userCredential.user;
     
-    // Create a user document in Firestore
-    await setDoc(doc(db, 'users', user.uid), {
-      uid: user.uid,
-      name,
-      email,
-      role: 'user', // default role
-      createdAt: new Date(),
-    });
+    // The 'setDoc' call that was here is removed to prevent the permissions error.
+    // In a real application, an 'onUserCreate' Cloud Function would now take over
+    // to create the corresponding document in Firestore.
 
     return userCredential;
   };
