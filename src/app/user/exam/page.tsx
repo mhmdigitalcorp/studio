@@ -37,8 +37,8 @@ export default function ExamPage() {
   };
 
   const currentQuestion = examQuestions[currentQuestionIndex];
-  const questionsAnswered = score.correct + (examMode === 'learning' ? retryQueue.length : (score.total - score.correct - (totalQuestions - (currentQuestionIndex + 1)))) + (examState === 'feedback' ? 1 : 0) -1;
   const totalQuestions = score.total;
+  const questionsAnswered = score.correct + (examMode === 'learning' ? retryQueue.length : (score.total - score.correct - (totalQuestions - (currentQuestionIndex + 1)))) + (examState === 'feedback' ? 1 : 0) -1;
 
 
   const handleSubmit = async () => {
