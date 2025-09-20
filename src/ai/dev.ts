@@ -6,3 +6,4 @@ import '@/ai/flows/generate-voice-lessons.ts';
 import '@/ai/flows/adaptive-learning-feedback.ts';
 import '@/ai/flows/generate-email-campaigns.ts';
 import '@/ai/flows/test-email-service.ts';
+import '@/ai/flows/test-ai-service.ts';
