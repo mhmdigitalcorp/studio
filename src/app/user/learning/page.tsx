@@ -57,10 +57,9 @@ export default function LearningPage() {
 
 
   useEffect(() => {
-    // Continuous listening
-    if (!isListening) {
-      startListening();
-    }
+    // Start listening when the component mounts
+    startListening();
+    
     // Cleanup on unmount
     return () => {
       stopListening();
@@ -68,7 +67,7 @@ export default function LearningPage() {
         currentAudio.pause();
       }
     };
-  }, [isListening, startListening, stopListening, currentAudio]);
+  }, [startListening, stopListening]);
 
 
   useEffect(() => {
