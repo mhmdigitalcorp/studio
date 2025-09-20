@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
 import {
   Table,
   TableBody,
@@ -17,9 +17,9 @@ import {
   CardTitle,
 } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { FileQuestion, PlusCircle, Upload, MoreHorizontal, Edit, Trash2, Eye } from 'lucide-react';
+import { FileQuestion, PlusCircle, Upload, MoreHorizontal, Edit, Trash2, Eye, Loader2 } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
-import { questions as initialQuestions, Question } from '@/lib/data';
+import { Question } from '@/lib/data';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -48,10 +48,26 @@ import {
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
-} from "@/components/ui/alert-dialog"
+} from "@/components/ui/alert-dialog";
+import { bulkUpload } from '@/ai/flows/bulk-upload';
+import { useToast } from '@/hooks/use-toast';
+
+// Mock data fetching function. In a real app, this would be `onSnapshot` from Firebase.
+const fetchQuestions = async (): Promise<Question[]> => {
+  // Simulate API call
+  await new Promise(res => setTimeout(res, 500));
+  return [
+    { id: "1", question: "What is the primary function of the mitochondria in a cell?", answer: "The primary function of mitochondria is to generate most of the cell's supply of adenosine triphosphate (ATP), used as a source of chemical energy.", category: "Biology", remarks: "Key concept for cellular respiration." },
+    { id: "2", question: "Who wrote 'To Kill a Mockingbird'?", answer: "Harper Lee wrote 'To Kill a Mockingbird'.", category: "Literature", remarks: "Published in 1960, a classic of modern American literature." },
+    { id: "3", question: "What is the formula for calculating the area of a circle?", answer: "The formula for the area of a circle is A = πr², where r is the radius of the circle.", category: "Mathematics", remarks: "Pi (π) is approximately 3.14159." },
+  ];
+};
+
 
 export default function QuestionsPage() {
-  const [questions, setQuestions] = useState<Question[]>(initialQuestions);
+  const [questions, setQuestions] = useState<Question[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [isProcessing, setIsProcessing] = useState(false);
   const [selectedQuestion, setSelectedQuestion] = useState<Question | null>(null);
   const [isCreateDialogOpen, setCreateDialogOpen] = useState(false);
   const [isViewDialogOpen, setViewDialogOpen] = useState(false);
@@ -59,6 +75,19 @@ export default function QuestionsPage() {
   const [questionToDelete, setQuestionToDelete] = useState<Question | null>(null);
   const [newQuestion, setNewQuestion] = useState<Omit<Question, 'id'>>({ question: '', answer: '', category: '', remarks: '' });
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const { toast } = useToast();
+
+  const loadQuestions = useCallback(async () => {
+    setIsLoading(true);
+    const fetchedQuestions = await fetchQuestions();
+    setQuestions(fetchedQuestions);
+    setIsLoading(false);
+  }, []);
+
+  useEffect(() => {
+    loadQuestions();
+  }, [loadQuestions]);
+
 
   const handleOpenCreateDialog = () => {
     setSelectedQuestion(null);
@@ -84,21 +113,28 @@ export default function QuestionsPage() {
 
   const handleDeleteQuestion = () => {
     if (questionToDelete) {
+      // In a real app, call a backend flow to delete
       setQuestions(questions.filter((q) => q.id !== questionToDelete.id));
+      toast({ title: "Question Deleted" });
       setDeleteDialogOpen(false);
       setQuestionToDelete(null);
     }
   };
 
   const handleSaveQuestion = () => {
+    // In a real app, call a backend flow to create/update
+    setIsProcessing(true);
     if (selectedQuestion) {
       // Update existing question
-      setQuestions(questions.map((q) => (q.id === selectedQuestion.id ? { ...q, ...newQuestion } : q)));
+      setQuestions(questions.map((q) => (q.id === selectedQuestion.id ? { ...q, ...newQuestion, id: q.id } : q)));
+      toast({ title: "Question Updated" });
     } else {
       // Create new question
-      const newId = Math.max(...questions.map(q => q.id), 0) + 1;
+      const newId = `q_${Date.now()}`;
       setQuestions([...questions, { id: newId, ...newQuestion }]);
+      toast({ title: "Question Created" });
     }
+    setIsProcessing(false);
     setCreateDialogOpen(false);
   };
 
@@ -106,41 +142,19 @@ export default function QuestionsPage() {
     fileInputRef.current?.click();
   };
 
-  const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (file) {
-      const reader = new FileReader();
-      reader.onload = (e) => {
-        const text = e.target?.result as string;
-        const lines = text.split('\n');
-        const headers = lines[0].split(',').map(h => h.trim().toLowerCase().replace(/"/g, ''));
-        const newQuestions: Question[] = [];
-        
-        let maxId = Math.max(...questions.map(q => q.id), 0);
-
-        lines.slice(1).forEach(line => {
-          if (line.trim() === '') return;
-          const data = line.split(',').map(d => d.trim().replace(/"/g, ''));
-          const questionObj: any = {};
-          headers.forEach((header, index) => {
-            questionObj[header] = data[index] || '';
-          });
-          
-          newQuestions.push({
-            id: questionObj.id ? parseInt(questionObj.id) : ++maxId,
-            category: questionObj.category || '',
-            question: questionObj.question || '',
-            answer: questionObj.answer || '',
-            remarks: questionObj.remarks || '',
-          });
-        });
-
-        // Simple de-duplication based on ID
-        const combined = [...questions, ...newQuestions];
-        const uniqueQuestions = Array.from(new Map(combined.map(q => [q.id, q])).values());
-        setQuestions(uniqueQuestions);
-      };
-      reader.readAsText(file);
+      setIsProcessing(true);
+      const csvData = await file.text();
+      const result = await bulkUpload({ dataType: 'questions', csvData });
+      if (result.success && result.updatedData) {
+        toast({ title: "Upload Successful", description: result.message });
+        setQuestions(result.updatedData as Question[]);
+      } else {
+         toast({ title: "Upload Failed", description: result.message, variant: "destructive" });
+      }
+      setIsProcessing(false);
     }
      // Reset file input
     if(event.target) {
@@ -164,7 +178,7 @@ export default function QuestionsPage() {
               </CardDescription>
             </div>
             <div className="flex gap-2">
-              <Button variant="outline" onClick={handleUploadClick}>
+              <Button variant="outline" onClick={handleUploadClick} disabled={isProcessing}>
                 <Upload className="mr-2 h-4 w-4" />
                 Upload CSV
               </Button>
@@ -175,7 +189,7 @@ export default function QuestionsPage() {
                 accept=".csv"
                 onChange={handleFileChange}
               />
-              <Button onClick={handleOpenCreateDialog}>
+              <Button onClick={handleOpenCreateDialog} disabled={isProcessing}>
                 <PlusCircle className="mr-2 h-4 w-4" />
                 New Question
               </Button>
@@ -183,6 +197,7 @@ export default function QuestionsPage() {
           </div>
         </CardHeader>
         <CardContent>
+          {isProcessing && <div className="absolute inset-0 bg-background/50 flex items-center justify-center z-10"><Loader2 className="h-8 w-8 animate-spin" /></div>}
           <Table>
             <TableHeader>
               <TableRow>
@@ -195,7 +210,15 @@ export default function QuestionsPage() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {questions.map((q) => (
+              {isLoading ? (
+                  Array.from({ length: 3 }).map((_, i) => (
+                    <TableRow key={`skel-${i}`}>
+                      <TableCell colSpan={6} className="p-4 text-center">
+                          <Loader2 className="mx-auto h-6 w-6 animate-spin text-muted-foreground" />
+                      </TableCell>
+                    </TableRow>
+                  ))
+              ) : questions.map((q) => (
                 <TableRow key={q.id}>
                   <TableCell className="font-medium">{`Q-${String(q.id).padStart(4, '0')}`}</TableCell>
                   <TableCell>
@@ -207,7 +230,7 @@ export default function QuestionsPage() {
                   <TableCell className="text-right">
                     <DropdownMenu>
                       <DropdownMenuTrigger asChild>
-                        <Button variant="ghost" className="h-8 w-8 p-0">
+                        <Button variant="ghost" className="h-8 w-8 p-0" disabled={isProcessing}>
                           <span className="sr-only">Open menu</span>
                           <MoreHorizontal className="h-4 w-4" />
                         </Button>
@@ -248,26 +271,29 @@ export default function QuestionsPage() {
           <div className="grid gap-4 py-4">
             <div className="grid grid-cols-4 items-center gap-4">
               <Label htmlFor="category" className="text-right">Category</Label>
-              <Input id="category" value={newQuestion.category} onChange={(e) => setNewQuestion({ ...newQuestion, category: e.target.value })} className="col-span-3" />
+              <Input id="category" value={newQuestion.category} onChange={(e) => setNewQuestion({ ...newQuestion, category: e.target.value })} className="col-span-3" disabled={isProcessing} />
             </div>
             <div className="grid grid-cols-4 items-start gap-4">
               <Label htmlFor="question" className="text-right pt-2">Question</Label>
-              <Textarea id="question" value={newQuestion.question} onChange={(e) => setNewQuestion({ ...newQuestion, question: e.target.value })} className="col-span-3" rows={3} />
+              <Textarea id="question" value={newQuestion.question} onChange={(e) => setNewQuestion({ ...newQuestion, question: e.target.value })} className="col-span-3" rows={3} disabled={isProcessing}/>
             </div>
             <div className="grid grid-cols-4 items-start gap-4">
               <Label htmlFor="answer" className="text-right pt-2">Answer</Label>
-              <Textarea id="answer" value={newQuestion.answer} onChange={(e) => setNewQuestion({ ...newQuestion, answer: e.target.value })} className="col-span-3" rows={5} />
+              <Textarea id="answer" value={newQuestion.answer} onChange={(e) => setNewQuestion({ ...newQuestion, answer: e.target.value })} className="col-span-3" rows={5} disabled={isProcessing} />
             </div>
              <div className="grid grid-cols-4 items-start gap-4">
               <Label htmlFor="remarks" className="text-right pt-2">Remarks</Label>
-              <Textarea id="remarks" value={newQuestion.remarks} onChange={(e) => setNewQuestion({ ...newQuestion, remarks: e.target.value })} className="col-span-3" rows={2} placeholder="Optional notes or hints..." />
+              <Textarea id="remarks" value={newQuestion.remarks} onChange={(e) => setNewQuestion({ ...newQuestion, remarks: e.target.value })} className="col-span-3" rows={2} placeholder="Optional notes or hints..." disabled={isProcessing} />
             </div>
           </div>
           <DialogFooter>
             <DialogClose asChild>
-                <Button variant="outline">Cancel</Button>
+                <Button variant="outline" disabled={isProcessing}>Cancel</Button>
             </DialogClose>
-            <Button onClick={handleSaveQuestion}>Save Question</Button>
+            <Button onClick={handleSaveQuestion} disabled={isProcessing}>
+              {isProcessing && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              Save Question
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -311,7 +337,7 @@ export default function QuestionsPage() {
           <AlertDialogHeader>
             <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
             <AlertDialogDescription>
-              This action cannot be undone. This will permanently delete the question and its associated data from our servers.
+              This action cannot be undone. This will permanently delete the question.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>

@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useMemo, useRef } from 'react';
+import React, { useState, useMemo, useRef, useEffect, useCallback } from 'react';
 import {
   Table,
   TableBody,
@@ -28,9 +28,10 @@ import {
   Wand2,
   Upload,
   Download,
+  Loader2,
 } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
-import { users as initialUsers, User } from '@/lib/data';
+import { User } from '@/lib/data';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Progress } from '@/components/ui/progress';
 import {
@@ -39,7 +40,6 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
   DropdownMenuSeparator,
-  DropdownMenuGroup,
 } from '@/components/ui/dropdown-menu';
 import { Input } from '@/components/ui/input';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -75,14 +75,28 @@ import {
   generateEmailCampaign,
   GenerateEmailCampaignOutput,
 } from '@/ai/flows/generate-email-campaigns';
+import { useToast } from '@/hooks/use-toast';
+import { manageUser } from '@/ai/flows/manage-user';
+import { bulkUpload } from '@/ai/flows/bulk-upload';
+
+
+// Mock data fetching function. In a real app, this would be `onSnapshot` from Firebase.
+const fetchUsers = async (): Promise<User[]> => {
+    // Simulate API call
+  await new Promise(res => setTimeout(res, 500));
+  const { users } = await manageUser({ action: 'bulkDelete', userIds: [] }); // This is a trick to get the current list
+  return users || [];
+};
 
 export default function UsersPage() {
-  const [users, setUsers] = useState<User[]>(initialUsers);
+  const [users, setUsers] = useState<User[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
   const [selectedUsers, setSelectedUsers] = useState<string[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
   const [isDeleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [isEmailDialogOpen, setEmailDialogOpen] = useState(false);
   const [isAddUserDialogOpen, setAddUserDialogOpen] = useState(false);
+  const [isProcessing, setIsProcessing] = useState(false);
   const [emailContent, setEmailContent] = useState<GenerateEmailCampaignOutput>({
     subject: '',
     body: '',
@@ -95,6 +109,19 @@ export default function UsersPage() {
     status: 'Active',
   });
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const { toast } = useToast();
+
+  const loadUsers = useCallback(async () => {
+    setIsLoading(true);
+    // In a real app, you would set up a Firestore listener here.
+    const fetchedUsers = await fetchUsers();
+    setUsers(fetchedUsers);
+    setIsLoading(false);
+  }, []);
+
+  useEffect(() => {
+    loadUsers();
+  }, [loadUsers]);
 
   const filteredUsers = useMemo(() => {
     return users.filter(
@@ -120,29 +147,32 @@ export default function UsersPage() {
     }
   };
 
-  const handleDeleteSelected = () => {
-    setUsers(users.filter((user) => !selectedUsers.includes(user.id)));
-    setSelectedUsers([]);
+  const handleDeleteSelected = async () => {
+    setIsProcessing(true);
+    const result = await manageUser({ action: 'bulkDelete', userIds: selectedUsers });
+    if (result.success) {
+      toast({ title: 'Success', description: result.message });
+      await loadUsers(); // Reload users from "backend"
+      setSelectedUsers([]);
+    } else {
+      toast({ title: 'Error', description: result.message, variant: 'destructive' });
+    }
     setDeleteDialogOpen(false);
+    setIsProcessing(false);
   };
 
-  const handleAddUser = () => {
-    const newId = `usr_${Date.now()}`;
-    const userToAdd: User = {
-      id: newId,
-      name: newUser.name || 'New User',
-      email: newUser.email || 'new.user@example.com',
-      phone: newUser.phone || '',
-      password: newUser.password,
-      avatar: `https://i.pravatar.cc/150?u=${newId}`,
-      status: newUser.status || 'Active',
-      lastLogin: new Date().toISOString().split('T')[0],
-      score: 0,
-      progress: 0,
-    };
-    setUsers((prev) => [...prev, userToAdd]);
-    setAddUserDialogOpen(false);
-    setNewUser({ name: '', email: '', phone: '', password: '', status: 'Active' });
+  const handleAddUser = async () => {
+    setIsProcessing(true);
+    const result = await manageUser({ action: 'create', userData: newUser });
+     if (result.success && result.user) {
+      setUsers(prev => [...prev, result.user!]);
+      toast({ title: 'Success', description: 'User added successfully.' });
+      setAddUserDialogOpen(false);
+      setNewUser({ name: '', email: '', phone: '', password: '', status: 'Active' });
+    } else {
+      toast({ title: 'Error', description: result.message, variant: 'destructive' });
+    }
+    setIsProcessing(false);
   };
 
   const handleGenerateEmail = async () => {
@@ -152,7 +182,8 @@ export default function UsersPage() {
     const targetAudience = selectedUserDetails.map((u) => u.name).join(', ');
 
     const result = await generateEmailCampaign({
-      campaignType: 'notification',
+      emailType: 'notification',
+      tone: 'friendly',
       topic: 'A general update for selected users',
       targetAudience: targetAudience,
     });
@@ -164,39 +195,20 @@ export default function UsersPage() {
     setEmailDialogOpen(true);
   };
 
-  const handleFileUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (file) {
-      const reader = new FileReader();
-      reader.onload = (e) => {
-        const text = e.target?.result as string;
-        const lines = text.split('\n').filter(line => line.trim() !== '');
-        const headers = lines[0].split(',').map(h => h.trim().toLowerCase().replace(/"/g, ''));
-        const newOrUpdatedUsers: User[] = lines.slice(1).map(line => {
-          const data = line.split(',').map(d => d.trim().replace(/"/g, ''));
-          const userObj: any = {};
-          headers.forEach((header, index) => {
-            userObj[header] = data[index] || '';
-          });
-          return {
-            id: userObj.id || `usr_${Date.now()}_${Math.random()}`,
-            name: userObj.name,
-            email: userObj.email,
-            phone: userObj.phone,
-            avatar: userObj.avatar || `https://i.pravatar.cc/150?u=${userObj.id}`,
-            status: userObj.status as 'Active' | 'Inactive',
-            lastLogin: userObj.lastlogin || new Date().toISOString().split('T')[0],
-            score: userObj.score ? parseInt(userObj.score) : 0,
-            progress: userObj.progress ? parseInt(userObj.progress) : 0,
-          };
-        });
+      setIsProcessing(true);
+      const csvData = await file.text();
+      const result = await bulkUpload({ dataType: 'users', csvData });
 
-        // Merge with existing users, updating if ID matches, otherwise adding
-        const usersMap = new Map(users.map(u => [u.id, u]));
-        newOrUpdatedUsers.forEach(u => usersMap.set(u.id, u));
-        setUsers(Array.from(usersMap.values()));
-      };
-      reader.readAsText(file);
+      if (result.success) {
+        toast({ title: 'Upload Successful', description: result.message });
+        setUsers(result.updatedData as User[]);
+      } else {
+        toast({ title: 'Upload Failed', description: result.message, variant: 'destructive' });
+      }
+      setIsProcessing(false);
     }
     if (event.target) {
       event.target.value = '';
@@ -204,6 +216,10 @@ export default function UsersPage() {
   };
 
   const handleFileDownload = () => {
+    if (users.length === 0) {
+        toast({ title: "No data to download", variant: "destructive" });
+        return;
+    }
     const headers = ['id', 'name', 'email', 'phone', 'status', 'lastLogin', 'score', 'progress', 'avatar'];
     const csvContent = [
       headers.join(','),
@@ -240,6 +256,7 @@ export default function UsersPage() {
               <Button
                 variant="outline"
                 onClick={() => fileInputRef.current?.click()}
+                disabled={isProcessing}
               >
                 <Upload className="mr-2 h-4 w-4" />
                 Upload
@@ -251,27 +268,14 @@ export default function UsersPage() {
                 accept=".csv"
                 onChange={handleFileUpload}
               />
-              <Button variant="outline" onClick={handleFileDownload}>
+              <Button variant="outline" onClick={handleFileDownload} disabled={isProcessing}>
                 <Download className="mr-2 h-4 w-4" />
                 Download
               </Button>
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button>
-                    <PlusCircle className="mr-2 h-4 w-4" />
-                    Add
-                    <ChevronDown className="ml-2 h-4 w-4" />
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="end">
-                  <DropdownMenuItem onClick={() => setAddUserDialogOpen(true)}>
-                    Add Manually
-                  </DropdownMenuItem>
-                  <DropdownMenuItem onClick={() => fileInputRef.current?.click()}>
-                    Bulk Upload
-                  </DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
+              <Button onClick={() => setAddUserDialogOpen(true)} disabled={isProcessing}>
+                <PlusCircle className="mr-2 h-4 w-4" />
+                Add User
+              </Button>
             </div>
           </div>
           <div className="flex items-center justify-between mt-4 gap-2">
@@ -286,7 +290,7 @@ export default function UsersPage() {
             </div>
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <Button variant="outline" disabled={selectedUsers.length === 0}>
+                <Button variant="outline" disabled={selectedUsers.length === 0 || isProcessing}>
                   Bulk Actions
                   <ChevronDown className="ml-2 h-4 w-4" />
                 </Button>
@@ -309,18 +313,20 @@ export default function UsersPage() {
           </div>
         </CardHeader>
         <CardContent>
+          {isProcessing && <div className="absolute inset-0 bg-background/50 flex items-center justify-center z-10"><Loader2 className="h-8 w-8 animate-spin" /></div>}
           <Table>
             <TableHeader>
               <TableRow>
                 <TableHead className="w-12">
                   <Checkbox
                     checked={
-                      filteredUsers.length > 0 && selectedUsers.length === filteredUsers.length
+                      !isLoading && filteredUsers.length > 0 && selectedUsers.length === filteredUsers.length
                     }
                     onCheckedChange={(checked) =>
                       handleSelectAll(Boolean(checked))
                     }
                     aria-label="Select all"
+                    disabled={isLoading}
                   />
                 </TableHead>
                 <TableHead>User</TableHead>
@@ -332,78 +338,94 @@ export default function UsersPage() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {filteredUsers.map((user) => (
-                <TableRow
-                  key={user.id}
-                  data-state={selectedUsers.includes(user.id) && 'selected'}
-                >
-                  <TableCell>
-                    <Checkbox
-                      checked={selectedUsers.includes(user.id)}
-                      onCheckedChange={(checked) =>
-                        handleSelectUser(user.id, Boolean(checked))
-                      }
-                      aria-label={`Select user ${user.name}`}
-                    />
-                  </TableCell>
-                  <TableCell>
-                    <div className="flex items-center gap-3">
-                      <Avatar>
-                        <AvatarImage src={user.avatar} />
-                        <AvatarFallback>{user.name.charAt(0)}</AvatarFallback>
-                      </Avatar>
-                      <div>
-                        <div className="font-medium">{user.name}</div>
-                        <div className="text-sm text-muted-foreground">
-                          {user.email}
+              {isLoading ? (
+                Array.from({ length: 5 }).map((_, i) => (
+                  <TableRow key={`skel-${i}`}>
+                    <TableCell colSpan={7} className="p-4 text-center">
+                        <Loader2 className="mx-auto h-6 w-6 animate-spin text-muted-foreground" />
+                    </TableCell>
+                  </TableRow>
+                ))
+              ) : filteredUsers.length === 0 ? (
+                 <TableRow>
+                    <TableCell colSpan={7} className="p-4 text-center text-muted-foreground">
+                        No users found.
+                    </TableCell>
+                  </TableRow>
+              ) : (
+                filteredUsers.map((user) => (
+                  <TableRow
+                    key={user.id}
+                    data-state={selectedUsers.includes(user.id) && 'selected'}
+                  >
+                    <TableCell>
+                      <Checkbox
+                        checked={selectedUsers.includes(user.id)}
+                        onCheckedChange={(checked) =>
+                          handleSelectUser(user.id, Boolean(checked))
+                        }
+                        aria-label={`Select user ${user.name}`}
+                      />
+                    </TableCell>
+                    <TableCell>
+                      <div className="flex items-center gap-3">
+                        <Avatar>
+                          <AvatarImage src={user.avatar} />
+                          <AvatarFallback>{user.name.charAt(0)}</AvatarFallback>
+                        </Avatar>
+                        <div>
+                          <div className="font-medium">{user.name}</div>
+                          <div className="text-sm text-muted-foreground">
+                            {user.email}
+                          </div>
                         </div>
                       </div>
-                    </div>
-                  </TableCell>
-                  <TableCell>
-                    <Badge
-                      variant={
-                        user.status === 'Active' ? 'default' : 'outline'
-                      }
-                    >
-                      {user.status}
-                    </Badge>
-                  </TableCell>
-                  <TableCell>
-                    <div className="flex items-center gap-2">
-                      <Progress value={user.progress} className="w-24" />
-                      <span>{user.progress}%</span>
-                    </div>
-                  </TableCell>
-                  <TableCell>
-                    <span
-                      className={`font-medium ${
-                        user.score > 80 ? 'text-green-400' : 'text-orange-400'
-                      }`}
-                    >
-                      {user.score}%
-                    </span>
-                  </TableCell>
-                  <TableCell>{user.lastLogin}</TableCell>
-                  <TableCell className="text-right">
-                    <DropdownMenu>
-                      <DropdownMenuTrigger asChild>
-                        <Button variant="ghost" className="h-8 w-8 p-0">
-                          <span className="sr-only">Open menu</span>
-                          <MoreHorizontal className="h-4 w-4" />
-                        </Button>
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent align="end">
-                        <DropdownMenuItem>View Details</DropdownMenuItem>
-                        <DropdownMenuItem>Reset Password</DropdownMenuItem>
-                        <DropdownMenuItem className="text-destructive">
-                          Deactivate User
-                        </DropdownMenuItem>
-                      </DropdownMenuContent>
-                    </DropdownMenu>
-                  </TableCell>
-                </TableRow>
-              ))}
+                    </TableCell>
+                    <TableCell>
+                      <Badge
+                        variant={
+                          user.status === 'Active' ? 'default' : 'outline'
+                        }
+                      >
+                        {user.status}
+                      </Badge>
+                    </TableCell>
+                    <TableCell>
+                      <div className="flex items-center gap-2">
+                        <Progress value={user.progress} className="w-24" />
+                        <span>{user.progress}%</span>
+                      </div>
+                    </TableCell>
+                    <TableCell>
+                      <span
+                        className={`font-medium ${
+                          user.score > 80 ? 'text-green-400' : 'text-orange-400'
+                        }`}
+                      >
+                        {user.score}%
+                      </span>
+                    </TableCell>
+                    <TableCell>{user.lastLogin}</TableCell>
+                    <TableCell className="text-right">
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button variant="ghost" className="h-8 w-8 p-0">
+                            <span className="sr-only">Open menu</span>
+                            <MoreHorizontal className="h-4 w-4" />
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end">
+                          <DropdownMenuItem>View Details</DropdownMenuItem>
+                          <DropdownMenuItem>Reset Password</DropdownMenuItem>
+                          <DropdownMenuItem className="text-destructive">
+                            Deactivate User
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    </TableCell>
+                  </TableRow>
+                ))
+              )}
             </TableBody>
           </Table>
         </CardContent>
@@ -415,7 +437,7 @@ export default function UsersPage() {
           <DialogHeader>
             <DialogTitle className="font-headline">Add New User</DialogTitle>
             <DialogDescription>
-              Fill out the form to add a new user to the system.
+              Fill out the form to add a new user to the system. An invite will be sent.
             </DialogDescription>
           </DialogHeader>
           <div className="grid gap-4 py-4">
@@ -425,6 +447,7 @@ export default function UsersPage() {
                 id="name"
                 value={newUser.name}
                 onChange={(e) => setNewUser({ ...newUser, name: e.target.value })}
+                disabled={isProcessing}
               />
             </div>
             <div className="grid gap-2">
@@ -436,10 +459,11 @@ export default function UsersPage() {
                 onChange={(e) =>
                   setNewUser({ ...newUser, email: e.target.value })
                 }
+                 disabled={isProcessing}
               />
             </div>
             <div className="grid gap-2">
-              <Label htmlFor="phone">Phone Number</Label>
+              <Label htmlFor="phone">Phone Number (Optional)</Label>
               <Input
                 id="phone"
                 type="tel"
@@ -447,17 +471,7 @@ export default function UsersPage() {
                 onChange={(e) =>
                   setNewUser({ ...newUser, phone: e.target.value })
                 }
-              />
-            </div>
-            <div className="grid gap-2">
-              <Label htmlFor="password">Password</Label>
-              <Input
-                id="password"
-                type="password"
-                value={newUser.password}
-                onChange={(e) =>
-                  setNewUser({ ...newUser, password: e.target.value })
-                }
+                 disabled={isProcessing}
               />
             </div>
             <div className="grid gap-2">
@@ -470,6 +484,7 @@ export default function UsersPage() {
                     status: value as 'Active' | 'Inactive',
                   })
                 }
+                 disabled={isProcessing}
               >
                 <SelectTrigger>
                   <SelectValue placeholder="Select status" />
@@ -483,9 +498,12 @@ export default function UsersPage() {
           </div>
           <DialogFooter>
             <DialogClose asChild>
-              <Button variant="outline">Cancel</Button>
+              <Button variant="outline" disabled={isProcessing}>Cancel</Button>
             </DialogClose>
-            <Button onClick={handleAddUser}>Add User</Button>
+            <Button onClick={handleAddUser} disabled={!newUser.email || !newUser.name || isProcessing}>
+              {isProcessing && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              Add User
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -504,11 +522,13 @@ export default function UsersPage() {
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogCancel disabled={isProcessing}>Cancel</AlertDialogCancel>
             <AlertDialogAction
               onClick={handleDeleteSelected}
               className="bg-destructive hover:bg-destructive/90"
+              disabled={isProcessing}
             >
+             {isProcessing && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
               Delete
             </AlertDialogAction>
           </AlertDialogFooter>

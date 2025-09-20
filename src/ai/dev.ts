@@ -7,3 +7,5 @@ import '@/ai/flows/adaptive-learning-feedback.ts';
 import '@/ai/flows/generate-email-campaigns.ts';
 import '@/ai/flows/test-email-service.ts';
 import '@/ai/flows/test-ai-service.ts';
+import '@/ai/flows/manage-user.ts';
+import '@/ai/flows/bulk-upload.ts';

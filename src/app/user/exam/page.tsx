@@ -4,7 +4,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardFooter, CardDescription } from '@/components/ui/card';
 import { Textarea } from '@/components/ui/textarea';
 import { Progress } from '@/components/ui/progress';
-import { questions as allQuestions, Question } from '@/lib/data';
+import { Question } from '@/lib/data';
 import { adaptiveLearningFeedback, AdaptiveLearningFeedbackOutput } from '@/ai/flows/adaptive-learning-feedback';
 import { aiProctoringExam } from '@/ai/flows/ai-proctoring-exam';
 import { Loader2, CheckCircle, XCircle, Send, Repeat, Trophy, BookOpen, GraduationCap, Mic, ArrowLeft } from 'lucide-react';
@@ -17,7 +17,22 @@ type ExamState = 'category_selection' | 'mode_selection' | 'ongoing' | 'feedback
 type ExamMode = 'learning' | 'exam';
 type AnswerState = 'idle' | 'listening' | 'processing' | 'correct' | 'incorrect';
 
+// Mock data fetching function. In a real app, this would be `onSnapshot` from Firebase.
+const fetchQuestions = async (): Promise<Question[]> => {
+  // Simulate API call
+  await new Promise(res => setTimeout(res, 500));
+  return [
+    { id: "1", question: "What is the primary function of the mitochondria in a cell?", answer: "The primary function of mitochondria is to generate most of the cell's supply of adenosine triphosphate (ATP), used as a source of chemical energy.", category: "Biology", remarks: "Key concept for cellular respiration." },
+    { id: "2", question: "Who wrote 'To Kill a Mockingbird'?", answer: "Harper Lee wrote 'To Kill a Mockingbird'.", category: "Literature", remarks: "Published in 1960, a classic of modern American literature." },
+    { id: "3", question: "What is the formula for calculating the area of a circle?", answer: "The formula for the area of a circle is A = πr², where r is the radius of the circle.", category: "Mathematics", remarks: "Pi (π) is approximately 3.14159." },
+    { id: "4", question: "What year did the first human land on the moon?", answer: "The first human landed on the moon in 1969.", category: "History", remarks: "Apollo 11 mission with Neil Armstrong and Buzz Aldrin." },
+    { id: "5", question: "What is the capital of Japan?", answer: "The capital of Japan is Tokyo.", category: "Geography", remarks: "Largest metropolitan area in the world." },
+  ];
+};
+
 export default function ExamPage() {
+  const [allQuestions, setAllQuestions] = useState<Question[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
   const [examQuestions, setExamQuestions] = useState<Question[]>([]);
   const [retryQueue, setRetryQueue] = useState<Question[]>([]);
   const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
@@ -33,6 +48,16 @@ export default function ExamPage() {
 
   const { isListening, transcript, startListening, stopListening } = useSpeechRecognition();
   const { speak } = useTTS();
+
+  useEffect(() => {
+    async function loadData() {
+      setIsLoading(true);
+      const fetchedQuestions = await fetchQuestions();
+      setAllQuestions(fetchedQuestions);
+      setIsLoading(false);
+    }
+    loadData();
+  }, []);
 
   useEffect(() => {
     if (transcript) {
@@ -57,7 +82,7 @@ export default function ExamPage() {
       setExamQuestions(selectedQuestions);
       setScore(s => ({...s, total: selectedQuestions.length}));
     }
-  }, [selectedCategory]);
+  }, [selectedCategory, allQuestions]);
 
   const currentQuestion = examQuestions[currentQuestionIndex];
   
@@ -84,20 +109,6 @@ export default function ExamPage() {
       });
     }
   }, [examState, currentQuestion, speak]);
-
-  // Effect for starting listening after question is spoken
-  useEffect(() => {
-    if (examState === 'ongoing' && currentQuestion && !isListening) {
-      // Wait a bit longer to ensure TTS has finished or failed
-      const timer = setTimeout(() => {
-        if (!isListening) {
-          startListening();
-        }
-      }, 1500); // Increased delay to ensure TTS has time to start
-      
-      return () => clearTimeout(timer);
-    }
-  }, [examState, currentQuestion, isListening, startListening]);
 
   const startExam = (mode: ExamMode) => {
     setExamMode(mode);
@@ -191,6 +202,10 @@ export default function ExamPage() {
     setProcessingState('idle');
     stopListening();
   };
+  
+  if (isLoading) {
+    return <div className="flex justify-center items-center h-full"><Loader2 className="h-8 w-8 animate-spin" /></div>;
+  }
 
   // Category Selection
   if (examState === 'category_selection') {

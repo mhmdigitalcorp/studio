@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useMemo, useCallback } from 'react';
+import { useState, useMemo, useCallback, useEffect } from 'react';
 import {
   Card,
   CardContent,
@@ -54,8 +54,7 @@ import {
   DialogClose,
   DialogDescription,
 } from '@/components/ui/dialog';
-import { campaigns as initialCampaigns, Campaign } from '@/lib/email-data';
-import { users as allUsers, User } from '@/lib/data';
+import { Campaign, User } from '@/lib/data';
 import { Badge } from '@/components/ui/badge';
 import {
   Table,
@@ -511,9 +510,29 @@ const ComposerView = ({
   </div>
 );
 
+// Mock data fetching functions
+const fetchCampaigns = async (): Promise<Campaign[]> => {
+  await new Promise(res => setTimeout(res, 500));
+  return [
+    { id: 'camp_1', subject: 'New Feature: Voice-Activated Lessons!', body: '## Discover a new way to learn!\n...', status: 'Sent', recipients: 'all', date: '2024-07-20T10:00:00.000Z' },
+    { id: 'camp_2', subject: 'Mid-Week Learning Reminder', body: '### Keep the momentum going!\n...', status: 'Scheduled', recipients: 'not-started', date: '2024-08-01T10:00:00.000Z' },
+  ];
+}
+
+const fetchUsers = async (): Promise<User[]> => {
+  await new Promise(res => setTimeout(res, 500));
+  return [
+    { id: 'usr_1', name: "Alice Johnson", email: "alice.j@example.com", phone: "123-456-7890", avatar: "https://i.pravatar.cc/150?u=a042581f4e29026024d", status: "Active", lastLogin: "2024-07-20", score: 92, progress: 100 },
+    { id: 'usr_2', name: "Bob Williams", email: "bob.w@example.com", phone: "234-567-8901", avatar: "https://i.pravatar.cc/150?u=a042581f4e29026704d", status: "Active", lastLogin: "2024-07-21", score: 88, progress: 75 },
+  ];
+}
+
+
 export default function EmailsPage() {
   const [view, setView] = useState<ViewMode>('manager');
-  const [campaigns, setCampaigns] = useState<Campaign[]>(initialCampaigns);
+  const [campaigns, setCampaigns] = useState<Campaign[]>([]);
+  const [allUsers, setAllUsers] = useState<User[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
   const [isGenerating, setIsGenerating] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [isAiModalOpen, setAiModalOpen] = useState(false);
@@ -523,8 +542,6 @@ export default function EmailsPage() {
   const [userSearchTerm, setUserSearchTerm] = useState('');
   const { toast } = useToast();
 
-  // NOTE: In a real app, this status would come from a shared context or backend call.
-  // For this demo, we are simulating it with local state.
   const [emailServiceStatus, setEmailServiceStatus] =
     useState<ServiceStatus>('operational');
 
@@ -537,21 +554,32 @@ export default function EmailsPage() {
     additionalInstructions: '',
   });
 
+  useEffect(() => {
+    async function loadData() {
+      setIsLoading(true);
+      const [fetchedCampaigns, fetchedUsers] = await Promise.all([
+        fetchCampaigns(),
+        fetchUsers(),
+      ]);
+      setCampaigns(fetchedCampaigns);
+      setAllUsers(fetchedUsers);
+      setIsLoading(false);
+    }
+    loadData();
+  }, []);
+
   const getRecipientSummary = useCallback(() => {
     const { type, segment, custom, manual } = composerState.recipientSelection;
-    let count = 0;
     switch (type) {
       case 'custom':
-        count = custom.length;
-        return `${count} custom user(s)`;
+        return `${custom.length} custom user(s)`;
       case 'manual':
-        count = manual.split(',').filter(e => e.trim()).length;
+        const count = manual.split(',').filter(e => e.trim()).length;
         return `${count} manual email(s)`;
       case 'segment':
       default:
         // In a real app, you'd calculate segment size. Here we'll estimate.
-        count = allUsers.length;
-        return recipientLabels[segment] || segment;
+        return 'Segment: ' + (recipientLabels[segment] || segment);
     }
   }, [composerState.recipientSelection]);
 
@@ -559,7 +587,7 @@ export default function EmailsPage() {
     setIsGenerating(true);
     try {
       const targetAudience = getRecipientSummary();
-      const result = await generateEmailCampaign({ ...aiFormState, targetAudience });
+      const result = await generateEmailCampaign({ ...aiFormState, emailType: aiFormState.emailType as any, tone: aiFormState.tone as any, targetAudience });
       setComposerState(prev => ({ ...prev, subject: result.subject, body: result.body }));
       setAiModalOpen(false);
     } catch (error) {
@@ -579,8 +607,6 @@ export default function EmailsPage() {
   }, []);
 
   const handleOpenEdit = useCallback((campaign: Campaign) => {
-    // This is a simplified edit; a real app would need to parse the recipient string
-    // and map it back to the selection UI state.
     setComposerState({
       ...getInitialComposerState(),
       id: campaign.id,
@@ -600,10 +626,11 @@ export default function EmailsPage() {
   const handleDeleteCampaign = useCallback(() => {
     if (campaignToDelete) {
       setCampaigns(campaigns.filter(c => c.id !== campaignToDelete.id));
+      toast({ title: 'Campaign Deleted' });
       setDeleteDialogOpen(false);
       setCampaignToDelete(null);
     }
-  }, [campaignToDelete, campaigns]);
+  }, [campaignToDelete, campaigns, toast]);
 
   const getRecipientCount = useCallback(() => {
     const { type, segment, custom, manual } = composerState.recipientSelection;
@@ -613,23 +640,19 @@ export default function EmailsPage() {
       case 'manual':
         return manual.split(',').filter(e => e.trim()).length;
       case 'segment':
-        // A real app would have logic to calculate this.
         return allUsers.length;
       default:
         return 0;
     }
-  }, [composerState.recipientSelection]);
+  }, [composerState.recipientSelection, allUsers.length]);
 
   const handleSave = useCallback(
     async (status: 'Draft' | 'Scheduled' | 'Sent') => {
       setIsSaving(true);
+      await new Promise(resolve => setTimeout(resolve, 1500));
 
       if (status === 'Sent') {
-        // Simulate sending email
-        await new Promise(resolve => setTimeout(resolve, 1500));
-
-        // Simulate success/failure
-        const isSuccess = Math.random() > 0.1; // 90% success rate
+        const isSuccess = Math.random() > 0.1;
         if (isSuccess) {
           toast({
             title: 'Email Sent Successfully!',
@@ -641,11 +664,11 @@ export default function EmailsPage() {
           toast({
             title: 'Email Send Failed',
             description:
-              'Could not send the email. Please check your service configuration and try again.',
+              'Could not send the email. Please check your service configuration.',
             variant: 'destructive',
           });
           setIsSaving(false);
-          return; // Don't proceed to update local state if sending failed
+          return;
         }
       }
 
@@ -665,7 +688,7 @@ export default function EmailsPage() {
       };
 
       if (composerState.id) {
-        setCampaigns(campaigns.map(c => (c.id === composerState.id ? { ...c, ...campaignData } : c)));
+        setCampaigns(campaigns.map(c => (c.id === composerState.id ? { ...c, ...campaignData, id: c.id } : c)));
       } else {
         const newCampaign: Campaign = {
           id: `camp_${Date.now()}`,
@@ -674,6 +697,7 @@ export default function EmailsPage() {
         setCampaigns(c => [newCampaign, ...c]);
       }
 
+      toast({ title: `Campaign ${status}`});
       setIsSaving(false);
       setView('manager');
     },
@@ -696,7 +720,7 @@ export default function EmailsPage() {
         user.name.toLowerCase().includes(userSearchTerm.toLowerCase()) ||
         user.email.toLowerCase().includes(userSearchTerm.toLowerCase())
     );
-  }, [userSearchTerm]);
+  }, [userSearchTerm, allUsers]);
 
   const handleCustomUserSelect = useCallback((userId: string) => {
     setComposerState(prev => {
@@ -715,6 +739,10 @@ export default function EmailsPage() {
   }, []);
 
   const currentStatus = statusConfig[emailServiceStatus];
+  
+  if (isLoading) {
+      return <div className="flex justify-center items-center h-full"><Loader2 className="h-8 w-8 animate-spin" /></div>;
+  }
 
   if (view === 'composer') {
     return (

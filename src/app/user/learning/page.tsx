@@ -2,21 +2,36 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { questions as allQuestions, Question } from '@/lib/data';
+import { Question } from '@/lib/data';
 import { generateVoiceLessons } from '@/ai/flows/generate-voice-lessons';
 import { Play, Pause, SkipForward, SkipBack, Volume2, Loader2, Info, Mic } from 'lucide-react';
 import { useSpeechRecognition } from '@/hooks/use-speech-recognition';
 import { cn } from '@/lib/utils';
-import { Badge } from '@/components/ui/badge';
 import _ from 'lodash';
 
 
 type LearningState = 'category_selection' | 'lesson';
 
+// Mock data fetching function. In a real app, this would be `onSnapshot` from Firebase.
+const fetchQuestions = async (): Promise<Question[]> => {
+  // Simulate API call
+  await new Promise(res => setTimeout(res, 500));
+  return [
+    { id: "1", question: "What is the primary function of the mitochondria in a cell?", answer: "The primary function of mitochondria is to generate most of the cell's supply of adenosine triphosphate (ATP), used as a source of chemical energy.", category: "Biology", remarks: "Key concept for cellular respiration." },
+    { id: "2", question: "Who wrote 'To Kill a Mockingbird'?", answer: "Harper Lee wrote 'To Kill a Mockingbird'.", category: "Literature", remarks: "Published in 1960, a classic of modern American literature." },
+    { id: "3", question: "What is the formula for calculating the area of a circle?", answer: "The formula for the area of a circle is A = πr², where r is the radius of the circle.", category: "Mathematics", remarks: "Pi (π) is approximately 3.14159." },
+    { id: "4", question: "What year did the first human land on the moon?", answer: "The first human landed on the moon in 1969.", category: "History", remarks: "Apollo 11 mission with Neil Armstrong and Buzz Aldrin." },
+    { id: "5", question: "What is the capital of Japan?", answer: "The capital of Japan is Tokyo.", category: "Geography", remarks: "Largest metropolitan area in the world." },
+  ];
+};
+
+
 export default function LearningPage() {
   const [learningState, setLearningState] = useState<LearningState>('category_selection');
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
+  const [allQuestions, setAllQuestions] = useState<Question[]>([]);
   const [questions, setQuestions] = useState<Question[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [showAnswer, setShowAnswer] = useState(false);
   const [isPlaying, setIsPlaying] = useState(false);
@@ -24,9 +39,19 @@ export default function LearningPage() {
   const [loadingAudio, setLoadingAudio] = useState<'question' | 'answer' | null>(null);
   const audioCache = useRef<Record<string, { questionAudio: string; answerAudio: string }>>({});
 
-  const { isListening, transcript, startListening, stopListening } = useSpeechRecognition();
+  const { isListening, transcript } = useSpeechRecognition();
 
-  const categories = [...new Set(allQuestions.map(q => q.category))];
+  const categories = useMemo(() => [...new Set(allQuestions.map(q => q.category))], [allQuestions]);
+
+  useEffect(() => {
+    async function loadData() {
+      setIsLoading(true);
+      const fetchedQuestions = await fetchQuestions();
+      setAllQuestions(fetchedQuestions);
+      setIsLoading(false);
+    }
+    loadData();
+  }, []);
 
   const currentQuestion: Question | undefined = questions[currentIndex];
 
@@ -62,9 +87,8 @@ export default function LearningPage() {
       if (currentAudio) {
         currentAudio.pause();
       }
-      stopListening();
     };
-  }, [currentAudio, stopListening]);
+  }, [currentAudio]);
 
 
   useEffect(() => {
@@ -140,6 +164,9 @@ export default function LearningPage() {
     setCurrentIndex(0);
   };
 
+  if (isLoading) {
+    return <div className="flex justify-center items-center h-full"><Loader2 className="h-8 w-8 animate-spin" /></div>;
+  }
 
   if (learningState === 'category_selection') {
     return (
