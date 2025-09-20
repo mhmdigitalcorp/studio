@@ -120,4 +120,7 @@ const manageUserFlow = ai.defineFlow(
         }
     } catch (error: any) {
          console.error(`Error in manageUserFlow action '${input.action}':`, error);
-         return { success: false, message: `An error occurred: ${
+         return { success: false, message: `An error occurred: ${error.message}` };
+    }
+  }
+);
