@@ -52,12 +52,26 @@ export default function ExamPage() {
   }, []);
 
   const currentQuestion = examQuestions[currentQuestionIndex];
+  
+  const handleMicClick = useCallback(() => {
+    if (isListening) {
+      stopListening();
+      setAnswerState('idle');
+    } else {
+      setUserAnswer(''); // Clear text when starting to listen
+      startListening();
+    }
+  }, [isListening, startListening, stopListening]);
 
   useEffect(() => {
     if (examState === 'ongoing' && currentQuestion) {
-      speak(currentQuestion.question);
+      speak(currentQuestion.question).then(() => {
+        if (examState === 'ongoing') {
+            handleMicClick();
+        }
+      });
     }
-  }, [examState, currentQuestion, speak]);
+  }, [examState, currentQuestion, speak, handleMicClick]);
 
 
   const startExam = (mode: ExamMode) => {
@@ -139,16 +153,6 @@ export default function ExamPage() {
     }
   };
   
-  const handleMicClick = () => {
-    if (isListening) {
-      stopListening();
-      setAnswerState('idle');
-    } else {
-      setUserAnswer(''); // Clear text when starting to listen
-      startListening();
-    }
-  };
-  
   if (examState === 'mode_selection') {
     return (
       <div className="max-w-2xl mx-auto">
@@ -211,7 +215,7 @@ export default function ExamPage() {
       <Card>
           <CardHeader>
           <CardTitle className="font-headline text-2xl">
-              {examMode === 'learning' ? 'AI Learning Session' : 'AI-Proctored Exam'}
+              {`${examMode === 'learning' ? 'AI Learning Session' : 'AI-Proctored Exam'}: ${currentQuestion.category}`}
           </CardTitle>
           <div className="flex items-center justify-between text-sm text-muted-foreground mb-2">
             <span>Question {currentQuestionIndex + 1} of {totalQuestions}</span>
