@@ -5,16 +5,16 @@ import { db } from '@/lib/firebase-admin';
 
 interface EmailOptions {
   to: string;
-  from: string;
   subject: string;
   text: string;
   html: string;
+  from?: string; // from is now optional
 }
 
 export async function sendEmail(options: EmailOptions) {
   const settingsDoc = await db.collection('settings').doc('app-config').get();
   if (!settingsDoc.exists) {
-    throw new Error('Email settings not found.');
+    throw new Error('Email settings not found in Firestore.');
   }
   const config = settingsDoc.data();
 
@@ -22,16 +22,20 @@ export async function sendEmail(options: EmailOptions) {
     throw new Error('Email provider is not configured.');
   }
 
+  if (!config.fromEmail) {
+    throw new Error("A 'From' email address has not been configured in settings.");
+  }
+
   let transporter;
 
   if (config.provider === 'smtp') {
     if (!config.smtpHost || !config.smtpPort || !config.smtpUser || !config.smtpPass) {
-      throw new Error('SMTP configuration is incomplete. Please check your settings.');
+      throw new Error('SMTP configuration is incomplete.');
     }
     transporter = nodemailer.createTransport({
       host: config.smtpHost,
       port: Number(config.smtpPort),
-      secure: Number(config.smtpPort) === 465, // true for 465, false for other ports
+      secure: Number(config.smtpPort) === 465,
       auth: {
         user: config.smtpUser,
         pass: config.smtpPass,
@@ -41,13 +45,12 @@ export async function sendEmail(options: EmailOptions) {
      if (!config.sendgridKey) {
        throw new Error('SendGrid API key is missing.');
      }
-    // Correctly configure nodemailer for SendGrid
     transporter = nodemailer.createTransport({
         host: 'smtp.sendgrid.net',
-        port: 587, // Use 587 for TLS or 465 for SSL
-        secure: false, // Use 'true' if you use port 465
+        port: 587,
+        secure: false,
         auth: {
-            user: 'apikey', // This is a literal string for SendGrid
+            user: 'apikey',
             pass: config.sendgridKey
         }
     });
@@ -56,7 +59,7 @@ export async function sendEmail(options: EmailOptions) {
   }
 
   const mailOptions = {
-    from: options.from || config.fromEmail,
+    from: config.fromEmail, // Always use the configured 'from' email
     to: options.to,
     subject: options.subject,
     text: options.text,

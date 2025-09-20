@@ -33,19 +33,9 @@ const testEmailServiceFlow = ai.defineFlow(
   },
   async ({ recipient }) => {
     try {
-      const settingsDoc = await db.collection('settings').doc('app-config').get();
-      if (!settingsDoc.exists) {
-        return { success: false, message: 'Email service not configured.' };
-      }
-      const settings = settingsDoc.data();
-      
-      if (!settings?.provider || settings.provider === 'none') {
-        return { success: false, message: 'No email provider selected.' };
-      }
-      
+      // The sendEmail service is now responsible for fetching its own configuration.
       await sendEmail({
         to: recipient,
-        from: settings.fromEmail,
         subject: 'LearnFlow Email Service Test',
         text: 'This is a test email from LearnFlow. Your email service is configured correctly.',
         html: '<p>This is a test email from LearnFlow. Your email service is configured correctly.</p>',
