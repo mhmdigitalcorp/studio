@@ -133,6 +133,7 @@ export default function LearningPage() {
     setIsPlaying(true);
     audio.onended = () => {
       if (type === 'question') {
+        setShowAnswer(true);
         playAudio('answer');
       } else {
         setIsPlaying(false);
