@@ -1,3 +1,4 @@
+
 'use client';
 
 import { useState, useMemo, useCallback, useEffect } from 'react';
@@ -89,6 +90,8 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { cn } from '@/lib/utils';
 import Link from 'next/link';
 import { useToast } from '@/hooks/use-toast';
+import { manageUser } from '@/ai/flows/manage-user';
+import { manageSettings, SettingsData } from '@/ai/flows/manage-settings';
 
 type ViewMode = 'manager' | 'composer';
 type ServiceStatus = 'operational' | 'degraded' | 'not-configured';
@@ -519,14 +522,6 @@ const fetchCampaigns = async (): Promise<Campaign[]> => {
   ];
 }
 
-const fetchUsers = async (): Promise<User[]> => {
-  await new Promise(res => setTimeout(res, 500));
-  return [
-    { id: 'usr_1', name: "Alice Johnson", email: "alice.j@example.com", phone: "123-456-7890", avatar: "https://i.pravatar.cc/150?u=a042581f4e29026024d", status: "Active", lastLogin: "2024-07-20", score: 92, progress: 100 },
-    { id: 'usr_2', name: "Bob Williams", email: "bob.w@example.com", phone: "234-567-8901", avatar: "https://i.pravatar.cc/150?u=a042581f4e29026704d", status: "Active", lastLogin: "2024-07-21", score: 88, progress: 75 },
-  ];
-}
-
 
 export default function EmailsPage() {
   const [view, setView] = useState<ViewMode>('manager');
@@ -542,8 +537,7 @@ export default function EmailsPage() {
   const [userSearchTerm, setUserSearchTerm] = useState('');
   const { toast } = useToast();
 
-  const [emailServiceStatus, setEmailServiceStatus] =
-    useState<ServiceStatus>('operational');
+  const [settings, setSettings] = useState<SettingsData | null>(null);
 
   const [aiFormState, setAiFormState] = useState<
     Omit<GenerateEmailCampaignInput, 'targetAudience'>
@@ -553,16 +547,30 @@ export default function EmailsPage() {
     topic: '',
     additionalInstructions: '',
   });
+  
+  const emailServiceStatus = useMemo<ServiceStatus>(() => {
+    if (!settings || !settings.provider || settings.provider === 'none') {
+      return 'not-configured';
+    }
+    return 'operational'; // Can be expanded with a test check
+  }, [settings]);
 
   useEffect(() => {
     async function loadData() {
       setIsLoading(true);
-      const [fetchedCampaigns, fetchedUsers] = await Promise.all([
-        fetchCampaigns(),
-        fetchUsers(),
-      ]);
+      const { success: settingsSuccess, settings: fetchedSettings } = await manageSettings({ action: 'get' });
+      if (settingsSuccess) {
+        setSettings(fetchedSettings || null);
+      }
+
+      const { success: usersSuccess, users: fetchedUsers } = await manageUser({ action: 'getAll' });
+      if (usersSuccess) {
+        setAllUsers(fetchedUsers || []);
+      }
+      
+      const fetchedCampaigns = await fetchCampaigns();
       setCampaigns(fetchedCampaigns);
-      setAllUsers(fetchedUsers);
+      
       setIsLoading(false);
     }
     loadData();
@@ -649,27 +657,23 @@ export default function EmailsPage() {
   const handleSave = useCallback(
     async (status: 'Draft' | 'Scheduled' | 'Sent') => {
       setIsSaving(true);
-      await new Promise(resolve => setTimeout(resolve, 1500));
 
       if (status === 'Sent') {
-        const isSuccess = Math.random() > 0.1;
-        if (isSuccess) {
-          toast({
-            title: 'Email Sent Successfully!',
-            description: `Your campaign "${
-              composerState.subject
-            }" was sent to ${getRecipientCount()} recipient(s).`,
-          });
-        } else {
-          toast({
-            title: 'Email Send Failed',
-            description:
-              'Could not send the email. Please check your service configuration.',
-            variant: 'destructive',
-          });
-          setIsSaving(false);
-          return;
-        }
+         if (emailServiceStatus !== 'operational') {
+           toast({
+             title: 'Email Send Failed',
+             description: 'Email service is not configured. Please configure it in Settings.',
+             variant: 'destructive',
+           });
+           setIsSaving(false);
+           return;
+         }
+        // Simulate sending
+        await new Promise(resolve => setTimeout(resolve, 1500));
+        toast({
+          title: 'Email Sent Successfully!',
+          description: `Your campaign "${composerState.subject}" was sent to ${getRecipientCount()} recipient(s).`,
+        });
       }
 
       const recipientsSummary = getRecipientSummary();
@@ -697,11 +701,13 @@ export default function EmailsPage() {
         setCampaigns(c => [newCampaign, ...c]);
       }
 
-      toast({ title: `Campaign ${status}`});
+      if (status !== 'Sent') {
+          toast({ title: `Campaign ${status}`});
+      }
       setIsSaving(false);
       setView('manager');
     },
-    [composerState, campaigns, getRecipientCount, getRecipientSummary, toast]
+    [composerState, campaigns, getRecipientCount, getRecipientSummary, toast, emailServiceStatus]
   );
 
   const recipientLabels: { [key: string]: string } = useMemo(
@@ -883,3 +889,5 @@ export default function EmailsPage() {
     />
   );
 }
+
+    
