@@ -15,7 +15,12 @@ export const useTTS = () => {
       return new Promise<void>((resolve, reject) => {
         utterance.onend = () => resolve();
         utterance.onerror = (event: SpeechSynthesisErrorEvent) => {
-            // Create a more informative error object
+            // The 'interrupted' error is not critical and can be ignored
+            if (event.error === 'interrupted') {
+              resolve(); // Resolve the promise as if it completed successfully
+              return;
+            }
+            // Create a more informative error object for other errors
             reject(new Error(`Speech synthesis error: ${event.error}`));
         };
         window.speechSynthesis.speak(utterance);
