@@ -6,11 +6,13 @@ import { Textarea } from '@/components/ui/textarea';
 import { Progress } from '@/components/ui/progress';
 import { questions as allQuestions, Question } from '@/lib/data';
 import { adaptiveLearningFeedback, AdaptiveLearningFeedbackOutput } from '@/ai/flows/adaptive-learning-feedback';
-import { Loader2, CheckCircle, XCircle, Send, Repeat, Trophy } from 'lucide-react';
+import { aiProctoringExam } from '@/ai/flows/ai-proctoring-exam';
+import { Loader2, CheckCircle, XCircle, Send, Repeat, Trophy, BookOpen, GraduationCap } from 'lucide-react';
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { cn } from '@/lib/utils';
 
-type ExamState = 'ongoing' | 'feedback' | 'finished';
+type ExamState = 'mode_selection' | 'ongoing' | 'feedback' | 'finished';
+type ExamMode = 'learning' | 'exam';
 
 export default function ExamPage() {
   const [examQuestions, setExamQuestions] = useState<Question[]>([]);
@@ -18,36 +20,55 @@ export default function ExamPage() {
   const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
   const [userAnswer, setUserAnswer] = useState('');
   const [feedback, setFeedback] = useState<AdaptiveLearningFeedbackOutput | null>(null);
-  const [examState, setExamState] = useState<ExamState>('ongoing');
+  const [examState, setExamState] = useState<ExamState>('mode_selection');
+  const [examMode, setExamMode] = useState<ExamMode>('learning');
   const [score, setScore] = useState({ correct: 0, total: 0 });
   
   useEffect(() => {
     const shuffled = [...allQuestions].sort(() => 0.5 - Math.random());
-    setExamQuestions(shuffled.slice(0, 5)); // Take 5 random questions for the exam
-    setScore(s => ({...s, total: 5}))
+    const selectedQuestions = shuffled.slice(0, 5);
+    setExamQuestions(selectedQuestions);
+    setScore(s => ({...s, total: selectedQuestions.length}))
   }, []);
 
+  const startExam = (mode: ExamMode) => {
+    setExamMode(mode);
+    setExamState('ongoing');
+  };
+
   const currentQuestion = examQuestions[currentQuestionIndex];
+  const questionsAnswered = score.correct + (examMode === 'learning' ? retryQueue.length : (score.total - score.correct - (totalQuestions - (currentQuestionIndex + 1)))) + (examState === 'feedback' ? 1 : 0) -1;
   const totalQuestions = score.total;
-  const questionsAnswered = score.correct + retryQueue.length + (examState === 'feedback' ? 1 : 0) -1;
+
 
   const handleSubmit = async () => {
     if (!userAnswer.trim()) return;
     setExamState('feedback');
     setFeedback(null); // Clear previous feedback
 
-    const result = await adaptiveLearningFeedback({
-      question: currentQuestion.question,
-      userAnswer,
-      correctAnswer: currentQuestion.answer,
-    });
+    let result;
+    if (examMode === 'learning') {
+       result = await adaptiveLearningFeedback({
+        question: currentQuestion.question,
+        userAnswer,
+        correctAnswer: currentQuestion.answer,
+      });
+    } else { // Exam mode
+       result = await aiProctoringExam({
+        question: currentQuestion.question,
+        userAnswer,
+        expectedAnswer: currentQuestion.answer,
+      });
+    }
     
     setFeedback(result);
 
     if (result.isCorrect) {
       setScore(s => ({ ...s, correct: s.correct + 1 }));
     } else {
-      setRetryQueue(q => [...q, currentQuestion]);
+      if (examMode === 'learning') {
+        setRetryQueue(q => [...q, currentQuestion]);
+      }
     }
   };
 
@@ -59,8 +80,7 @@ export default function ExamPage() {
       setCurrentQuestionIndex(i => i + 1);
       setExamState('ongoing');
     } else {
-      // Finished initial questions, check retry queue
-      if (retryQueue.length > 0) {
+      if (examMode === 'learning' && retryQueue.length > 0) {
         setExamQuestions([...retryQueue]);
         setRetryQueue([]);
         setCurrentQuestionIndex(0);
@@ -70,6 +90,33 @@ export default function ExamPage() {
       }
     }
   };
+
+  if (examState === 'mode_selection') {
+    return (
+      <div className="max-w-2xl mx-auto">
+        <Card>
+          <CardHeader>
+            <CardTitle className="font-headline text-2xl">Choose Your Exam Mode</CardTitle>
+            <CardDescription>Select how you want to test your knowledge.</CardDescription>
+          </CardHeader>
+          <CardContent className="grid md:grid-cols-2 gap-4">
+            <Card className="p-4 flex flex-col items-center text-center">
+              <BookOpen className="h-12 w-12 text-primary mb-4"/>
+              <h3 className="font-semibold text-lg">Learning Mode</h3>
+              <p className="text-sm text-muted-foreground mt-2">Get immediate feedback and retry incorrect questions. Great for practice.</p>
+              <Button className="mt-4 w-full" onClick={() => startExam('learning')}>Start Learning</Button>
+            </Card>
+            <Card className="p-4 flex flex-col items-center text-center">
+              <GraduationCap className="h-12 w-12 text-primary mb-4"/>
+              <h3 className="font-semibold text-lg">Exam Mode</h3>
+              <p className="text-sm text-muted-foreground mt-2">A formal test of your knowledge. Answers are graded at the end.</p>
+              <Button className="mt-4 w-full" onClick={() => startExam('exam')}>Start Exam</Button>
+            </Card>
+          </CardContent>
+        </Card>
+      </div>
+    )
+  }
 
   if (examQuestions.length === 0) {
     return <div className="flex justify-center items-center h-full"><Loader2 className="h-8 w-8 animate-spin" /></div>;
@@ -105,10 +152,12 @@ export default function ExamPage() {
     <div className="max-w-2xl mx-auto">
       <Card>
         <CardHeader>
-          <CardTitle className="font-headline text-2xl">AI-Proctored Exam</CardTitle>
+          <CardTitle className="font-headline text-2xl">
+            {examMode === 'learning' ? 'AI Learning Session' : 'AI-Proctored Exam'}
+          </CardTitle>
           <div className="flex items-center gap-4 pt-2">
             <Progress value={(questionsAnswered / totalQuestions) * 100} className="flex-1"/>
-            <span className="text-sm text-muted-foreground">Question {questionsAnswered + 1} of {totalQuestions}</span>
+            <span className="text-sm text-muted-foreground">Question {currentQuestionIndex + 1} of {totalQuestions}</span>
           </div>
         </CardHeader>
         <CardContent className="space-y-4">
