@@ -5,6 +5,7 @@
 
 import { ai } from '@/ai/genkit';
 import { z } from 'zod';
+import { db } from '@/lib/firebase-admin';
 
 const TestEmailServiceInputSchema = z.object({
   service: z.string().describe('The email service to test.'),
@@ -35,8 +36,12 @@ const testEmailServiceFlow = ai.defineFlow(
     // In a real application, you would retrieve the secure API key for the service
     // and use a library like Nodemailer or a provider's SDK to send an email.
     // For this example, we will simulate the process.
+    
+    // Fetch 'from' email from settings
+    const settingsDoc = await db.collection('settings').doc('app-config').get();
+    const fromEmail = settingsDoc.exists ? settingsDoc.data()?.fromEmail : 'noreply@learnflow.app';
 
-    console.log(`Simulating test email to ${input.recipient} via ${input.service}`);
+    console.log(`Simulating test email from ${fromEmail} to ${input.recipient} via ${input.service}`);
 
     // Simulate a network delay
     await new Promise(resolve => setTimeout(resolve, 1500));
@@ -52,7 +57,7 @@ const testEmailServiceFlow = ai.defineFlow(
     // Simulate success
     return {
       success: true,
-      message: `Test email successfully sent to admin@learnflow.app via ${input.service}.`,
+      message: `Test email successfully sent from ${fromEmail} to ${input.recipient}.`,
     };
   }
 );

@@ -10,3 +10,4 @@ import '@/ai/flows/test-ai-service.ts';
 import '@/ai/flows/manage-user.ts';
 import '@/ai/flows/manage-question.ts';
 import '@/ai/flows/bulk-upload.ts';
+import '@/ai/flows/manage-settings.ts';

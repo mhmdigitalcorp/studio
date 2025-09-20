@@ -1,7 +1,7 @@
 
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import {
   Card,
   CardContent,
@@ -34,19 +34,10 @@ import { cn } from '@/lib/utils';
 import { useToast } from '@/hooks/use-toast';
 import { testEmailService } from '@/ai/flows/test-email-service';
 import { testAiService } from '@/ai/flows/test-ai-service';
+import { manageSettings, SettingsData } from '@/ai/flows/manage-settings';
 
 type ServiceStatus = 'operational' | 'degraded' | 'not-configured' | 'disabled';
 type EmailService = 'none' | 'sendgrid' | 'smtp' | 'gmail';
-
-type EmailConfig = {
-  provider: EmailService;
-  fromEmail: string;
-  sendgridKey?: string;
-  smtpHost?: string;
-  smtpPort?: string;
-  smtpUser?: string;
-  smtpPass?: string;
-};
 
 const statusConfig: Record<ServiceStatus, { text: string; className: string; icon: React.ReactNode }> = {
   'operational': { text: 'Operational', className: 'bg-green-500', icon: <CheckCircle2 className="h-4 w-4" /> },
@@ -61,139 +52,119 @@ export default function SettingsPage() {
   const [isEmailEnabled, setIsEmailEnabled] = useState(true);
   const [isTestingEmail, setIsTestingEmail] = useState(false);
 
-  // State to hold the full saved configuration
-  const [emailConfig, setEmailConfig] = useState<EmailConfig>({
-    provider: 'none',
-    fromEmail: 'noreply@learnflow.app',
-  });
-
+  // Combined state for all settings
+  const [settings, setSettings] = useState<SettingsData>({ provider: 'none', fromEmail: '', aiApiKey: '' });
+  
   // Temporary state for the dialog form
-  const [dialogEmailConfig, setDialogEmailConfig] = useState<EmailConfig>(emailConfig);
+  const [dialogSettings, setDialogSettings] = useState<SettingsData>({});
   
   const [emailStatus, setEmailStatus] = useState<ServiceStatus>('not-configured');
-  
-  const [aiApiKey, setAiApiKey] = useState('');
   const [aiStatus, setAiStatus] = useState<ServiceStatus>('not-configured');
   const [isAiEnabled, setIsAiEnabled] = useState(true);
   const [isTestingAi, setIsTestingAi] = useState(false);
-  const [isSavingAi, setIsSavingAi] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
 
   const { toast } = useToast();
   
-  // Sync dialog state when main config changes
-  useEffect(() => {
-    setDialogEmailConfig(emailConfig);
-    if (isEmailEnabled) {
-      setEmailStatus(emailConfig.provider === 'none' ? 'not-configured' : 'operational');
-    } else {
-      setEmailStatus('disabled');
+  const loadSettings = useCallback(async () => {
+    setIsLoading(true);
+    const { success, settings: fetchedSettings } = await manageSettings({ action: 'get' });
+    if (success && fetchedSettings) {
+      setSettings(fetchedSettings);
     }
-  }, [emailConfig, isEmailEnabled]);
+    setIsLoading(false);
+  }, []);
 
   useEffect(() => {
-     if (!isAiEnabled) {
+    loadSettings();
+  }, [loadSettings]);
+
+  // Update statuses when settings change
+  useEffect(() => {
+    if (!isEmailEnabled) {
+      setEmailStatus('disabled');
+    } else {
+      setEmailStatus(settings.provider && settings.provider !== 'none' ? 'operational' : 'not-configured');
+    }
+    
+    if (!isAiEnabled) {
       setAiStatus('disabled');
     } else {
-      setAiStatus(aiApiKey ? 'operational' : 'not-configured');
+      setAiStatus(settings.aiApiKey ? 'operational' : 'not-configured');
     }
-  }, [aiApiKey, isAiEnabled]);
+  }, [settings, isEmailEnabled, isAiEnabled]);
   
-  // Pre-fill dialog when it opens
   const openConfigureDialog = () => {
-    setDialogEmailConfig(emailConfig);
+    setDialogSettings(settings); // Pre-fill dialog with current saved settings
     setConfigDialogOpen(true);
   };
 
   const handleToggleEmailService = (enabled: boolean) => {
     setIsEmailEnabled(enabled);
-    if (!enabled) {
-      setEmailStatus('disabled');
-    } else {
-      // Revert to previous status or re-check
-      setEmailStatus(emailConfig.provider === 'none' ? 'not-configured' : 'operational');
-    }
   };
   
   const handleToggleAiService = (enabled: boolean) => {
     setIsAiEnabled(enabled);
   };
 
-  const handleSaveConfiguration = () => {
-    // This function now saves from the dialog's state to the main component's state
-    setEmailConfig(dialogEmailConfig);
-
-    if (dialogEmailConfig.provider !== 'none') {
-        toast({
-            title: "Configuration Saved",
-            description: `Email service is now set to ${dialogEmailConfig.provider}.`,
-        });
+  const handleSaveConfiguration = async () => {
+    setIsSaving(true);
+    const result = await manageSettings({ action: 'set', settingsData: dialogSettings });
+    if (result.success && result.settings) {
+      setSettings(result.settings);
+      toast({
+          title: "Configuration Saved",
+          description: "Your settings have been updated.",
+      });
+      setConfigDialogOpen(false);
     } else {
-        toast({
-            title: "Configuration Cleared",
-            description: "Email service provider has been unset.",
-            variant: "destructive"
-        });
+      toast({ title: "Error", description: result.message, variant: "destructive" });
     }
-    setConfigDialogOpen(false);
+    setIsSaving(false);
   };
   
   const handleTestEmailService = async () => {
+    if (!settings.provider || settings.provider === 'none') return;
     setIsTestingEmail(true);
     try {
         const result = await testEmailService({
-            service: emailConfig.provider,
-            recipient: emailConfig.fromEmail
+            service: settings.provider,
+            recipient: 'admin@learnflow.app'
         });
 
         if (result.success) {
-            toast({
-                title: "Test Successful",
-                description: result.message,
-            });
+            toast({ title: "Test Successful", description: result.message });
              setEmailStatus('operational');
         } else {
-            toast({
-                title: "Test Failed",
-                description: result.message,
-                variant: "destructive",
-            });
+            toast({ title: "Test Failed", description: result.message, variant: "destructive" });
             setEmailStatus('degraded');
         }
 
     } catch (error) {
-        toast({
-            title: "Test Error",
-            description: "An unexpected error occurred while testing the service.",
-            variant: "destructive",
-        });
+        toast({ title: "Test Error", description: "An unexpected error occurred.", variant: "destructive" });
         setEmailStatus('degraded');
     }
     setIsTestingEmail(false);
   }
   
   const handleSaveAiKey = async () => {
-    setIsSavingAi(true);
-    await new Promise(resolve => setTimeout(resolve, 1000));
-    // In a real app this would call a secure backend function
-    if (aiApiKey) {
-        toast({
-            title: "AI Key Saved",
-            description: "The AI API key has been securely stored.",
-        });
+    setIsSaving(true);
+    const result = await manageSettings({ action: 'set', settingsData: { aiApiKey: settings.aiApiKey } });
+    if (result.success) {
+        toast({ title: "AI Key Saved", description: "The AI API key has been securely stored." });
+        if(result.settings) setSettings(s => ({ ...s, ...result.settings }));
     } else {
-         toast({
-            title: "AI Key Cleared",
-            description: "The AI API key has been removed.",
-            variant: "destructive"
-        });
+         toast({ title: "Error", description: result.message, variant: "destructive" });
     }
-    setIsSavingAi(false);
+    setIsSaving(false);
   }
 
   const handleTestAiService = async () => {
+    if (!settings.aiApiKey) return;
     setIsTestingAi(true);
     try {
-        const result = await testAiService({ apiKey: aiApiKey });
+        const result = await testAiService({ apiKey: settings.aiApiKey });
         if (result.success) {
             toast({ title: "Test Successful", description: result.message });
             setAiStatus('operational');
@@ -206,6 +177,10 @@ export default function SettingsPage() {
         setAiStatus('degraded');
     }
     setIsTestingAi(false);
+  }
+  
+  if (isLoading) {
+    return <div className="flex h-64 items-center justify-center"><Loader2 className="h-8 w-8 animate-spin" /></div>;
   }
 
 
@@ -254,18 +229,18 @@ export default function SettingsPage() {
                   <Input 
                     id="google-ai-key" 
                     type="password" 
-                    value={aiApiKey}
-                    onChange={(e) => setAiApiKey(e.target.value)}
+                    value={settings.aiApiKey || ''}
+                    onChange={(e) => setSettings(s => ({ ...s, aiApiKey: e.target.value }))}
                     placeholder="Enter your API key"
-                    disabled={!isAiEnabled}
+                    disabled={!isAiEnabled || isSaving}
                   />
                 </div>
                 <div className="flex gap-2 self-end">
-                    <Button variant="secondary" disabled={!isAiEnabled || !aiApiKey || isSavingAi} onClick={handleSaveAiKey}>
-                        {isSavingAi ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
-                        {isSavingAi ? 'Saving...' : 'Save Key'}
+                    <Button variant="secondary" disabled={!isAiEnabled || !settings.aiApiKey || isSaving} onClick={handleSaveAiKey}>
+                        {isSaving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
+                        {isSaving ? 'Saving...' : 'Save Key'}
                     </Button>
-                    <Button variant="outline" disabled={!isAiEnabled || !aiApiKey || isTestingAi} onClick={handleTestAiService}>
+                    <Button variant="outline" disabled={!isAiEnabled || !settings.aiApiKey || isTestingAi} onClick={handleTestAiService}>
                         {isTestingAi ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <TestTube2 className="mr-2 h-4 w-4" />}
                         {isTestingAi ? 'Testing...' : 'Test Key'}
                     </Button>
@@ -303,17 +278,17 @@ export default function SettingsPage() {
                 <div>
                   <h4 className="font-medium">Current Provider</h4>
                   <p className="text-muted-foreground text-sm">
-                    {emailConfig.provider === 'none' ? 'No provider configured' : `Using ${emailConfig.provider}`}
+                    {settings.provider && settings.provider !== 'none' ? `Using ${settings.provider}` : 'No provider configured'}
                   </p>
-                   {emailConfig.provider !== 'none' && (
+                   {settings.provider && settings.provider !== 'none' && (
                     <p className="text-muted-foreground text-sm mt-1">
-                      From: {emailConfig.fromEmail}
+                      From: {settings.fromEmail}
                     </p>
                   )}
                 </div>
                 <div className="flex gap-2">
                     <Button variant="outline" onClick={openConfigureDialog} disabled={!isEmailEnabled}>Configure</Button>
-                    <Button variant="secondary" disabled={!isEmailEnabled || emailConfig.provider === 'none' || isTestingEmail} onClick={handleTestEmailService}>
+                    <Button variant="secondary" disabled={!isEmailEnabled || !settings.provider || settings.provider === 'none' || isTestingEmail} onClick={handleTestEmailService}>
                         {isTestingEmail ? (
                             <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                         ) : (
@@ -338,8 +313,8 @@ export default function SettingsPage() {
             <div className="space-y-2">
               <Label>Email Provider</Label>
               <Select 
-                value={dialogEmailConfig.provider} 
-                onValueChange={(value) => setDialogEmailConfig(prev => ({...prev, provider: value as EmailService}))}
+                value={dialogSettings.provider || 'none'} 
+                onValueChange={(value) => setDialogSettings(prev => ({...prev, provider: value as EmailService}))}
               >
                 <SelectTrigger>
                   <SelectValue placeholder="Select a provider" />
@@ -353,54 +328,57 @@ export default function SettingsPage() {
               </Select>
             </div>
 
-            {dialogEmailConfig.provider === 'sendgrid' && (
+            {dialogSettings.provider === 'sendgrid' && (
               <div className="space-y-2 p-4 border rounded-md animate-in fade-in-50">
                  <Label htmlFor="sendgrid-key">SendGrid API Key</Label>
-                 <Input id="sendgrid-key" type="password" placeholder="SG.xxxxxxxx" value={dialogEmailConfig.sendgridKey || ''} onChange={e => setDialogEmailConfig(prev => ({...prev, sendgridKey: e.target.value}))}/>
+                 <Input id="sendgrid-key" type="password" placeholder="SG.xxxxxxxx" value={dialogSettings.sendgridKey || ''} onChange={e => setDialogSettings(prev => ({...prev, sendgridKey: e.target.value}))}/>
               </div>
             )}
             
-            {dialogEmailConfig.provider === 'smtp' && (
+            {dialogSettings.provider === 'smtp' && (
               <div className="space-y-4 p-4 border rounded-md animate-in fade-in-50">
                  <div className="space-y-2">
                     <Label htmlFor="smtp-host">SMTP Host</Label>
-                    <Input id="smtp-host" placeholder="smtp.example.com" value={dialogEmailConfig.smtpHost || ''} onChange={e => setDialogEmailConfig(prev => ({...prev, smtpHost: e.target.value}))}/>
+                    <Input id="smtp-host" placeholder="smtp.example.com" value={dialogSettings.smtpHost || ''} onChange={e => setDialogSettings(prev => ({...prev, smtpHost: e.target.value}))}/>
                  </div>
                  <div className="grid grid-cols-2 gap-4">
                     <div className="space-y-2">
                         <Label htmlFor="smtp-port">Port</Label>
-                        <Input id="smtp-port" type="number" placeholder="587" value={dialogEmailConfig.smtpPort || ''} onChange={e => setDialogEmailConfig(prev => ({...prev, smtpPort: e.target.value}))}/>
+                        <Input id="smtp-port" type="number" placeholder="587" value={dialogSettings.smtpPort || ''} onChange={e => setDialogSettings(prev => ({...prev, smtpPort: e.target.value}))}/>
                     </div>
                      <div className="space-y-2">
                         <Label htmlFor="smtp-user">Username</Label>
-                        <Input id="smtp-user" placeholder="your-username" value={dialogEmailConfig.smtpUser || ''} onChange={e => setDialogEmailConfig(prev => ({...prev, smtpUser: e.target.value}))}/>
+                        <Input id="smtp-user" placeholder="your-username" value={dialogSettings.smtpUser || ''} onChange={e => setDialogSettings(prev => ({...prev, smtpUser: e.target.value}))}/>
                     </div>
                  </div>
                  <div className="space-y-2">
                     <Label htmlFor="smtp-pass">Password</Label>
-                    <Input id="smtp-pass" type="password" value={dialogEmailConfig.smtpPass || ''} onChange={e => setDialogEmailConfig(prev => ({...prev, smtpPass: e.target.value}))}/>
+                    <Input id="smtp-pass" type="password" value={dialogSettings.smtpPass || ''} onChange={e => setDialogSettings(prev => ({...prev, smtpPass: e.target.value}))}/>
                  </div>
               </div>
             )}
 
-            {(dialogEmailConfig.provider === 'sendgrid' || dialogEmailConfig.provider === 'smtp') && (
+            {(dialogSettings.provider === 'sendgrid' || dialogSettings.provider === 'smtp') && (
               <div className="space-y-2">
                 <Label htmlFor="from-email">Default 'From' Email</Label>
                 <Input 
                   id="from-email" 
                   type="email" 
                   placeholder="noreply@learnflow.app" 
-                  value={dialogEmailConfig.fromEmail}
-                  onChange={(e) => setDialogEmailConfig(prev => ({...prev, fromEmail: e.target.value}))}
+                  value={dialogSettings.fromEmail || ''}
+                  onChange={(e) => setDialogSettings(prev => ({...prev, fromEmail: e.target.value}))}
                 />
               </div>
             )}
           </div>
           <DialogFooter>
             <DialogClose asChild>
-              <Button variant="outline">Cancel</Button>
+              <Button variant="outline" disabled={isSaving}>Cancel</Button>
             </DialogClose>
-            <Button onClick={handleSaveConfiguration} disabled={dialogEmailConfig.provider === 'gmail'}>Save Configuration</Button>
+            <Button onClick={handleSaveConfiguration} disabled={dialogSettings.provider === 'gmail' || isSaving}>
+              {isSaving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              Save Configuration
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
