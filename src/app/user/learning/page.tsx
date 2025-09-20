@@ -1,10 +1,10 @@
 'use client';
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Question } from '@/lib/data';
 import { generateVoiceLessons } from '@/ai/flows/generate-voice-lessons';
-import { Play, Pause, SkipForward, SkipBack, Volume2, Loader2, Info, Mic } from 'lucide-react';
+import { Play, Pause, SkipForward, SkipBack, Volume2, Loader2, Info, Mic, History, FileQuestion, BookCopy, Code, BookOpen } from 'lucide-react';
 import { useSpeechRecognition } from '@/hooks/use-speech-recognition';
 import { cn } from '@/lib/utils';
 import _ from 'lodash';
@@ -21,6 +21,14 @@ const fetchQuestions = async (): Promise<Question[]> => {
   return [];
 };
 
+const categoryIcons: { [key: string]: React.ReactNode } = {
+  'History': <History className="h-8 w-8 mb-4 text-primary" />,
+  'Science': <FileQuestion className="h-8 w-8 mb-4 text-primary" />,
+  'General Knowledge': <BookCopy className="h-8 w-8 mb-4 text-primary" />,
+  'Technology': <Code className="h-8 w-8 mb-4 text-primary" />,
+  'default': <BookOpen className="h-8 w-8 mb-4 text-primary" />
+};
+
 export default function LearningPage() {
   const [learningState, setLearningState] = useState<LearningState>('category_selection');
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
@@ -33,7 +41,6 @@ export default function LearningPage() {
   const [loadingAudio, setLoadingAudio] = useState<'question' | 'answer' | null>(null);
   const [isPlayingSequence, setIsPlayingSequence] = useState(false);
   
-  // Use ref for currentAudio to avoid dependency issues
   const currentAudioRef = useRef<HTMLAudioElement | null>(null);
   const audioCache = useRef<Record<string, { questionAudio: string; answerAudio: string }>>({});
 
@@ -52,11 +59,9 @@ export default function LearningPage() {
     loadData();
   }, []);
 
-  // FIXED: playAudio function without circular dependencies
   const playAudio = useCallback(async (type: 'question' | 'answer'): Promise<void> => {
     if (loadingAudio || !currentQuestion) return;
 
-    // Stop any currently playing audio using the ref
     if (currentAudioRef.current) {
       currentAudioRef.current.pause();
       currentAudioRef.current = null;
@@ -110,9 +115,8 @@ export default function LearningPage() {
       setLoadingAudio(null);
       throw error;
     }
-  }, [currentQuestion, loadingAudio]); // REMOVED currentAudio from dependencies
+  }, [currentQuestion, loadingAudio]);
 
-  // FIXED: playSequence function
   const playSequence = useCallback(async (): Promise<void> => {
     if (isPlayingSequence || !currentQuestion) return;
     
@@ -141,17 +145,14 @@ export default function LearningPage() {
     }
   }, [isPlayingSequence, currentQuestion, playAudio]);
 
-  // FIXED: Stable handler functions
   const handlePlayPause = useCallback(async (): Promise<void> => {
     if (isPlaying) {
-      // Pause current audio
       if (currentAudioRef.current) {
         currentAudioRef.current.pause();
         setIsPlaying(false);
         setIsPlayingSequence(false);
       }
     } else {
-      // Start playing sequence
       await playSequence();
     }
   }, [isPlaying, playSequence]);
@@ -168,7 +169,6 @@ export default function LearningPage() {
     setCurrentIndex(i => (i - 1 + (questions.length || 1)) % (questions.length || 1));
   }, 300), [questions.length]);
 
-  // Voice commands handler
   useEffect(() => {
     if (transcript) {
       const command = transcript.toLowerCase().trim();
@@ -190,7 +190,6 @@ export default function LearningPage() {
     }
   }, [transcript, handleNext, handlePrev, handleRepeat, handlePlayPause]);
 
-  // Cleanup effects
   useEffect(() => {
     return () => {
       if (currentAudioRef.current) {
@@ -200,7 +199,6 @@ export default function LearningPage() {
   }, []);
 
   useEffect(() => {
-    // Reset audio when question changes
     if (currentAudioRef.current) {
       currentAudioRef.current.pause();
       setIsPlaying(false);
@@ -223,29 +221,34 @@ export default function LearningPage() {
 
   if (learningState === 'category_selection') {
     return (
-        <div className="container mx-auto max-w-3xl">
-            <Card>
-                <CardHeader>
-                    <CardTitle className="font-headline text-2xl">Select a Category</CardTitle>
-                    <p className="text-muted-foreground">Choose a topic to start your voice-driven learning session.</p>
-                </CardHeader>
-                <CardContent className="grid grid-cols-2 md:grid-cols-3 gap-4">
-                    {categories.length > 0 ? categories.map(category => (
-                        <Button key={category} variant="outline" className="h-24 text-lg" onClick={() => selectCategory(category)}>
-                            {category}
-                        </Button>
-                    )) : (
-                      <p className="text-muted-foreground col-span-full text-center">No categories found. Please add questions in the admin panel.</p>
-                    )}
+      <Card>
+        <CardHeader>
+            <CardTitle className="font-headline text-2xl">Select a Category</CardTitle>
+            <CardDescription>Choose a topic to start your voice-driven learning session.</CardDescription>
+        </CardHeader>
+        <CardContent className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
+            {categories.length > 0 ? categories.map(category => (
+              <Card 
+                key={category} 
+                className="group cursor-pointer transform transition-all duration-300 hover:scale-105 hover:bg-secondary"
+                onClick={() => selectCategory(category)}
+              >
+                <CardContent className="flex flex-col items-center justify-center p-6">
+                  {categoryIcons[category] || categoryIcons.default}
+                  <p className="font-semibold text-center">{category}</p>
                 </CardContent>
-            </Card>
-        </div>
+              </Card>
+            )) : (
+              <p className="text-muted-foreground col-span-full text-center py-8">No learning categories found. Please add questions in the admin panel.</p>
+            )}
+        </CardContent>
+      </Card>
     )
   }
 
   if (!currentQuestion) {
       return (
-          <div className="container mx-auto max-w-3xl text-center">
+          <div className="text-center">
             <p>No questions found for this category.</p>
             <Button onClick={() => setLearningState('category_selection')} className="mt-4">Back to Categories</Button>
           </div>
@@ -253,75 +256,75 @@ export default function LearningPage() {
   }
 
   return (
-    <div className="container mx-auto max-w-3xl">
-      <Card className="overflow-hidden">
-        <CardHeader>
-            <div className="flex justify-between items-start">
-                <div>
-                    <CardTitle className="font-headline text-2xl flex items-center gap-2">
-                        <Volume2 /> {selectedCategory}
-                    </CardTitle>
-                    <p className="text-muted-foreground">
-                        Lesson {currentIndex + 1} of {questions.length}
-                    </p>
-                </div>
-                <div className="flex items-center gap-2">
-                    <Mic className={cn("text-muted-foreground transition-colors", isListening && "text-primary animate-pulse")} />
-                    <Button variant="outline" onClick={() => {
-                        setLearningState('category_selection');
-                        if (currentAudioRef.current) currentAudioRef.current.pause();
-                        setIsPlaying(false);
-                    }}>Change Category</Button>
-                </div>
-            </div>
-        </CardHeader>
-        <CardContent className="space-y-6">
-          <div className="p-6 bg-secondary/30 rounded-lg min-h-[120px] flex items-center justify-center">
-            <p className="text-xl font-semibold text-center">{currentQuestion.question}</p>
+    <Card className="overflow-hidden">
+      <CardHeader>
+          <div className="flex justify-between items-start">
+              <div>
+                  <CardTitle className="font-headline text-2xl flex items-center gap-2">
+                      <Volume2 /> {selectedCategory}
+                  </CardTitle>
+                  <p className="text-muted-foreground">
+                      Lesson {currentIndex + 1} of {questions.length}
+                  </p>
+              </div>
+              <div className="flex items-center gap-2">
+                  <Mic className={cn("text-muted-foreground transition-colors", isListening && "text-primary animate-pulse")} />
+                  <Button variant="outline" onClick={() => {
+                      setLearningState('category_selection');
+                      if (currentAudioRef.current) currentAudioRef.current.pause();
+                      setIsPlaying(false);
+                  }}>Change Category</Button>
+              </div>
           </div>
+      </CardHeader>
+      <CardContent className="space-y-6">
+        <div className="p-6 bg-secondary/50 rounded-lg min-h-[120px] flex items-center justify-center">
+          <p className="text-xl font-semibold text-center">{currentQuestion.question}</p>
+        </div>
 
-          {showAnswer && (
-            <div className="p-6 bg-background rounded-lg border min-h-[120px] flex items-center justify-center animate-in fade-in">
-              <p className="text-lg text-center text-muted-foreground">{currentQuestion.answer}</p>
-            </div>
-          )}
-
-          <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
-             <Button variant="outline" size="icon" onClick={handlePrev} disabled={loadingAudio !== null || isPlayingSequence}>
-                <SkipBack />
-              </Button>
-            <Button size="lg" onClick={handlePlayPause} disabled={loadingAudio === 'question' || loadingAudio === 'answer' || isPlayingSequence}>
-              {isPlayingSequence ? (
-                <Loader2 className="animate-spin" />
-              ) : loadingAudio ? (
-                <Loader2 className="animate-spin" />
-              ) : isPlaying ? (
-                <Pause className="h-6 w-6" />
-              ) : (
-                <Play className="h-6 w-6" />
-              )}
-               <span className="ml-2">{isPlayingSequence ? 'Playing...' : isPlaying ? 'Pause' : 'Play Lesson'}</span>
-            </Button>
-            <Button variant="outline" size="icon" onClick={handleNext} disabled={loadingAudio !== null || isPlayingSequence}>
-              <SkipForward />
-            </Button>
+        {showAnswer && (
+          <div className="p-6 bg-background rounded-lg border min-h-[120px] flex items-center justify-center animate-in fade-in">
+            <p className="text-lg text-center text-muted-foreground">{currentQuestion.answer}</p>
           </div>
+        )}
 
-           <div className="flex items-center justify-center gap-4">
-            <Button variant="secondary" onClick={() => setShowAnswer(s => !s)}>
-                <Info className="mr-2 h-4 w-4" />
-                {showAnswer ? 'Hide Answer' : 'Show Answer'}
+        <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
+            <Button variant="outline" size="icon" onClick={handlePrev} disabled={loadingAudio !== null || isPlayingSequence}>
+              <SkipBack />
             </Button>
-            <Button variant="secondary" onClick={() => playAudio('answer')} disabled={loadingAudio === 'answer' || isPlayingSequence}>
-                {loadingAudio === 'answer' ? <Loader2 className="animate-spin mr-2"/> : <Volume2 className="mr-2 h-4 w-4" />}
-                Play Answer Only
-            </Button>
-          </div>
-        </CardContent>
-      </Card>
-      <div className="text-center mt-4 text-sm text-muted-foreground">
-        Voice commands enabled: "Play", "Pause", "Next", "Back", "Replay"
-      </div>
-    </div>
+          <Button size="lg" className="w-full sm:w-48" onClick={handlePlayPause} disabled={loadingAudio === 'question' || loadingAudio === 'answer' || isPlayingSequence}>
+            {isPlayingSequence ? (
+              <Loader2 className="animate-spin" />
+            ) : loadingAudio ? (
+              <Loader2 className="animate-spin" />
+            ) : isPlaying ? (
+              <Pause className="h-6 w-6" />
+            ) : (
+              <Play className="h-6 w-6" />
+            )}
+              <span className="ml-2">{isPlayingSequence ? 'Playing...' : isPlaying ? 'Pause' : 'Play Lesson'}</span>
+          </Button>
+          <Button variant="outline" size="icon" onClick={handleNext} disabled={loadingAudio !== null || isPlayingSequence}>
+            <SkipForward />
+          </Button>
+        </div>
+
+          <div className="flex items-center justify-center gap-4">
+          <Button variant="secondary" onClick={() => setShowAnswer(s => !s)}>
+              <Info className="mr-2 h-4 w-4" />
+              {showAnswer ? 'Hide Answer' : 'Show Answer'}
+          </Button>
+          <Button variant="secondary" onClick={() => playAudio('answer')} disabled={loadingAudio === 'answer' || isPlayingSequence}>
+              {loadingAudio === 'answer' ? <Loader2 className="animate-spin mr-2"/> : <Volume2 className="mr-2 h-4 w-4" />}
+              Play Answer Only
+          </Button>
+        </div>
+      </CardContent>
+      <CardFooter className="justify-center">
+        <p className="text-center mt-4 text-sm text-muted-foreground">
+          Voice commands enabled: "Play", "Pause", "Next", "Back", "Replay"
+        </p>
+      </CardFooter>
+    </Card>
   );
 }

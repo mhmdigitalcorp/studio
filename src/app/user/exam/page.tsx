@@ -7,7 +7,7 @@ import { Progress } from '@/components/ui/progress';
 import { Question } from '@/lib/data';
 import { adaptiveLearningFeedback, AdaptiveLearningFeedbackOutput } from '@/ai/flows/adaptive-learning-feedback';
 import { aiProctoringExam } from '@/ai/flows/ai-proctoring-exam';
-import { Loader2, CheckCircle, XCircle, Send, Repeat, Trophy, BookOpen, GraduationCap, Mic, ArrowLeft } from 'lucide-react';
+import { Loader2, CheckCircle, XCircle, Send, Repeat, Trophy, BookOpen, GraduationCap, Mic, ArrowLeft, History, FileQuestion, BookCopy, Code } from 'lucide-react';
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { cn } from '@/lib/utils';
 import { useSpeechRecognition } from '@/hooks/use-speech-recognition';
@@ -17,6 +17,14 @@ import { manageQuestion } from '@/ai/flows/manage-question';
 type ExamState = 'category_selection' | 'mode_selection' | 'ongoing' | 'feedback' | 'finished';
 type ExamMode = 'learning' | 'exam';
 type AnswerState = 'idle' | 'listening' | 'processing' | 'correct' | 'incorrect';
+
+const categoryIcons: { [key: string]: React.ReactNode } = {
+  'History': <History className="h-8 w-8 mb-4 text-primary" />,
+  'Science': <FileQuestion className="h-8 w-8 mb-4 text-primary" />,
+  'General Knowledge': <BookCopy className="h-8 w-8 mb-4 text-primary" />,
+  'Technology': <Code className="h-8 w-8 mb-4 text-primary" />,
+  'default': <BookOpen className="h-8 w-8 mb-4 text-primary" />
+};
 
 // Fetches live questions from the backend
 const fetchQuestions = async (): Promise<Question[]> => {
@@ -210,31 +218,31 @@ export default function ExamPage() {
     const categories = [...new Set(allQuestions.map(q => q.category))];
     
     return (
-      <div className="max-w-2xl mx-auto">
-        <Card>
-          <CardHeader>
-            <CardTitle className="font-headline text-2xl">Select a Category</CardTitle>
-            <CardDescription>Choose a topic for your exam or learning session.</CardDescription>
-          </CardHeader>
-          <CardContent className="grid grid-cols-2 md:grid-cols-3 gap-4">
-            {categories.length > 0 ? categories.map(category => (
-              <Button 
-                key={category} 
-                variant="outline" 
-                className="h-24 text-lg" 
-                onClick={() => {
-                  setSelectedCategory(category);
-                  setExamState('mode_selection');
-                }}
-              >
-                {category}
-              </Button>
-            )) : (
-              <p className="text-muted-foreground col-span-full text-center">No categories found. Please add questions in the admin panel.</p>
-            )}
-          </CardContent>
-        </Card>
-      </div>
+      <Card>
+        <CardHeader>
+          <CardTitle className="font-headline text-2xl">Select an Exam Category</CardTitle>
+          <CardDescription>Choose a topic to test your knowledge.</CardDescription>
+        </CardHeader>
+        <CardContent className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
+          {categories.length > 0 ? categories.map(category => (
+            <Card
+              key={category}
+              className="group cursor-pointer transform transition-all duration-300 hover:scale-105 hover:bg-secondary"
+              onClick={() => {
+                setSelectedCategory(category);
+                setExamState('mode_selection');
+              }}
+            >
+              <CardContent className="flex flex-col items-center justify-center p-6">
+                {categoryIcons[category] || categoryIcons.default}
+                <p className="font-semibold text-center">{category}</p>
+              </CardContent>
+            </Card>
+          )) : (
+            <p className="text-muted-foreground col-span-full text-center py-8">No exam categories found. Please add questions in the admin panel.</p>
+          )}
+        </CardContent>
+      </Card>
     );
   }
 
@@ -296,12 +304,12 @@ export default function ExamPage() {
                 <p className="text-6xl font-bold text-primary my-4">{finalScore}%</p>
                 <p className="text-muted-foreground">{score.correct} out of {totalQuestions} questions correct.</p>
             </CardContent>
-            <CardFooter className="flex gap-2">
-                 <Button className="flex-1" onClick={() => resetExam()}>
+            <CardFooter className="flex flex-col sm:flex-row gap-2">
+                 <Button className="w-full sm:flex-1" onClick={() => resetExam()}>
                     <Repeat className="mr-2 h-4 w-4" />
                     Take Another Exam
                 </Button>
-                <Button variant="outline" onClick={() => {
+                <Button variant="outline" className="w-full sm:w-auto" onClick={() => {
                   setExamState('category_selection');
                   resetExam();
                 }}>
@@ -328,7 +336,7 @@ export default function ExamPage() {
               <ArrowLeft className="h-4 w-4" />
             </Button>
           </div>
-          <div className="flex items-center justify-between text-sm text-muted-foreground mb-2">
+          <div className="flex items-center justify-between text-sm text-muted-foreground my-2">
             <span>Question {currentQuestionIndex + 1} of {totalQuestions}</span>
             <span>Score: {score.correct}/{score.total}</span>
             {examMode === 'learning' && retryQueue.length > 0 && (
@@ -338,7 +346,9 @@ export default function ExamPage() {
           <Progress value={(questionsAnswered / totalQuestions) * 100} className="w-full"/>
           </CardHeader>
           <CardContent className="space-y-4">
-              <p className="text-lg font-semibold min-h-[6rem] flex items-center">{currentQuestion.question}</p>
+              <div className="p-6 bg-secondary/50 rounded-lg min-h-[8rem] flex items-center justify-center">
+                  <p className="text-lg font-semibold text-center">{currentQuestion.question}</p>
+              </div>
               <div className="relative">
                   <Textarea
                       placeholder={isListening ? "Listening..." : "Speak or type your answer here..."}
