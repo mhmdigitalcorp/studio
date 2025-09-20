@@ -7,13 +7,13 @@ import { Progress } from '@/components/ui/progress';
 import { questions as allQuestions, Question } from '@/lib/data';
 import { adaptiveLearningFeedback, AdaptiveLearningFeedbackOutput } from '@/ai/flows/adaptive-learning-feedback';
 import { aiProctoringExam } from '@/ai/flows/ai-proctoring-exam';
-import { Loader2, CheckCircle, XCircle, Send, Repeat, Trophy, BookOpen, GraduationCap, Mic } from 'lucide-react';
+import { Loader2, CheckCircle, XCircle, Send, Repeat, Trophy, BookOpen, GraduationCap, Mic, ArrowLeft } from 'lucide-react';
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { cn } from '@/lib/utils';
 import { useSpeechRecognition } from '@/hooks/use-speech-recognition';
 import { useTTS } from '@/hooks/use-tts';
 
-type ExamState = 'mode_selection' | 'ongoing' | 'feedback' | 'finished';
+type ExamState = 'category_selection' | 'mode_selection' | 'ongoing' | 'feedback' | 'finished';
 type ExamMode = 'learning' | 'exam';
 type AnswerState = 'idle' | 'listening' | 'processing' | 'correct' | 'incorrect';
 
@@ -23,8 +23,9 @@ export default function ExamPage() {
   const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
   const [userAnswer, setUserAnswer] = useState('');
   const [feedback, setFeedback] = useState<AdaptiveLearningFeedbackOutput | null>(null);
-  const [examState, setExamState] = useState<ExamState>('mode_selection');
+  const [examState, setExamState] = useState<ExamState>('category_selection');
   const [examMode, setExamMode] = useState<ExamMode>('learning');
+  const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
   const [score, setScore] = useState({ correct: 0, total: 0 });
   const [answerState, setAnswerState] = useState<AnswerState>('idle');
   const [processingState, setProcessingState] = useState<'idle' | 'processing' | 'graded'>('idle');
@@ -46,12 +47,16 @@ export default function ExamPage() {
     }
   }, [isListening, answerState]);
 
+  // Load questions when category is selected
   useEffect(() => {
-    const shuffled = [...allQuestions].sort(() => 0.5 - Math.random());
-    const selectedQuestions = shuffled.slice(0, 5);
-    setExamQuestions(selectedQuestions);
-    setScore(s => ({...s, total: selectedQuestions.length}))
-  }, []);
+    if (selectedCategory) {
+      const categoryQuestions = allQuestions.filter(q => q.category === selectedCategory);
+      const shuffled = [...categoryQuestions].sort(() => 0.5 - Math.random());
+      const selectedQuestions = shuffled.slice(0, 5);
+      setExamQuestions(selectedQuestions);
+      setScore(s => ({...s, total: selectedQuestions.length}));
+    }
+  }, [selectedCategory]);
 
   const currentQuestion = examQuestions[currentQuestionIndex];
   
@@ -95,7 +100,6 @@ export default function ExamPage() {
   const totalQuestions = score.total;
   const questionsAnswered = currentQuestionIndex;
 
-
   const handleSubmit = async () => {
     if (!userAnswer.trim()) {
         setAnswerState('idle');
@@ -106,7 +110,7 @@ export default function ExamPage() {
     setExamState('feedback');
     setAnswerState('processing');
     setProcessingState('processing');
-    setFeedback(null); // Clear previous feedback
+    setFeedback(null);
 
     let result;
     try {
@@ -116,7 +120,7 @@ export default function ExamPage() {
           userAnswer,
           correctAnswer: currentQuestion.answer,
         });
-      } else { // Exam mode
+      } else {
         result = await aiProctoringExam({
           question: currentQuestion.question,
           userAnswer,
@@ -165,14 +169,66 @@ export default function ExamPage() {
       }
     }
   };
-  
+
+  const resetExam = () => {
+    setExamQuestions([]);
+    setRetryQueue([]);
+    setCurrentQuestionIndex(0);
+    setUserAnswer('');
+    setFeedback(null);
+    setExamState('category_selection');
+    setExamMode('learning');
+    setSelectedCategory(null);
+    setScore({ correct: 0, total: 0 });
+    setAnswerState('idle');
+    setProcessingState('idle');
+    stopListening();
+  };
+
+  // Category Selection
+  if (examState === 'category_selection') {
+    const categories = [...new Set(allQuestions.map(q => q.category))];
+    
+    return (
+      <div className="max-w-2xl mx-auto">
+        <Card>
+          <CardHeader>
+            <CardTitle className="font-headline text-2xl">Select a Category</CardTitle>
+            <CardDescription>Choose a topic for your exam or learning session.</CardDescription>
+          </CardHeader>
+          <CardContent className="grid grid-cols-2 md:grid-cols-3 gap-4">
+            {categories.map(category => (
+              <Button 
+                key={category} 
+                variant="outline" 
+                className="h-24 text-lg" 
+                onClick={() => {
+                  setSelectedCategory(category);
+                  setExamState('mode_selection');
+                }}
+              >
+                {category}
+              </Button>
+            ))}
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
+  // Mode Selection
   if (examState === 'mode_selection') {
     return (
       <div className="max-w-2xl mx-auto">
         <Card>
           <CardHeader>
-            <CardTitle className="font-headline text-2xl">Choose Your Exam Mode</CardTitle>
-            <CardDescription>Select how you want to test your knowledge.</CardDescription>
+            <div className="flex items-center gap-2 mb-4">
+              <Button variant="ghost" size="icon" onClick={() => setExamState('category_selection')}>
+                <ArrowLeft className="h-4 w-4" />
+              </Button>
+              <CardTitle className="font-headline text-2xl">Choose Your Exam Mode</CardTitle>
+            </div>
+            <CardDescription>Selected category: {selectedCategory}</CardDescription>
           </CardHeader>
           <CardContent className="grid md:grid-cols-2 gap-4">
             <Card className="p-4 flex flex-col items-center text-center">
@@ -190,7 +246,7 @@ export default function ExamPage() {
           </CardContent>
         </Card>
       </div>
-    )
+    );
   }
 
   if (examQuestions.length === 0) {
@@ -206,30 +262,45 @@ export default function ExamPage() {
                     <Trophy className="h-16 w-16 text-yellow-400" />
                 </div>
                 <CardTitle className="font-headline text-3xl">Exam Completed!</CardTitle>
-                <CardDescription>Congratulations on finishing the exam.</CardDescription>
+                <CardDescription>Category: {selectedCategory} | Mode: {examMode}</CardDescription>
             </CardHeader>
             <CardContent>
                 <p className="text-muted-foreground">Your Final Score:</p>
                 <p className="text-6xl font-bold text-primary my-4">{finalScore}%</p>
                 <p className="text-muted-foreground">{score.correct} out of {totalQuestions} questions correct.</p>
             </CardContent>
-            <CardFooter>
-                 <Button className="w-full" onClick={() => window.location.reload()}>
+            <CardFooter className="flex gap-2">
+                 <Button className="flex-1" onClick={() => resetExam()}>
                     <Repeat className="mr-2 h-4 w-4" />
                     Take Another Exam
                 </Button>
+                <Button variant="outline" onClick={() => {
+                  setExamState('category_selection');
+                  resetExam();
+                }}>
+                  Change Category
+                </Button>
             </CardFooter>
         </Card>
-    )
+    );
   }
 
   return (
     <div className="max-w-3xl mx-auto">
       <Card>
           <CardHeader>
-          <CardTitle className="font-headline text-2xl">
-              {`${examMode === 'learning' ? 'AI Learning Session' : 'AI-Proctored Exam'}: ${currentQuestion.category}`}
-          </CardTitle>
+          <div className="flex items-center justify-between">
+            <CardTitle className="font-headline text-2xl">
+                {`${examMode === 'learning' ? 'AI Learning Session' : 'AI-Proctored Exam'}: ${selectedCategory}`}
+            </CardTitle>
+            <Button variant="ghost" size="icon" onClick={() => {
+              if (window.confirm('Are you sure you want to exit? Your progress will be lost.')) {
+                resetExam();
+              }
+            }}>
+              <ArrowLeft className="h-4 w-4" />
+            </Button>
+          </div>
           <div className="flex items-center justify-between text-sm text-muted-foreground mb-2">
             <span>Question {currentQuestionIndex + 1} of {totalQuestions}</span>
             <span>Score: {score.correct}/{score.total}</span>
