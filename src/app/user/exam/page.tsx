@@ -156,12 +156,14 @@ export default function ExamPage() {
       handleFinishExam();
     }
   }, [currentQuestionIndex, examQuestions.length, handleFinishExam]);
-
+  
   const handleSubmit = useCallback(async () => {
+    // --- STATE GUARD ---
     if (interactionState !== 'listening' && interactionState !== 'retake_prompt') {
       return;
     }
-
+    // --- END STATE GUARD ---
+  
     if (!userAnswer.trim()) return;
     
     stopListening();
@@ -180,7 +182,10 @@ export default function ExamPage() {
         setInteractionState('correct');
         if (!examQuestions[currentQuestionIndex].answeredCorrectly) {
             setScore(s => ({ ...s, correct: s.correct + 1 }));
-            examQuestions[currentQuestionIndex].answeredCorrectly = true; // Mark as answered correctly to not double count
+            // This is a local mutation, but it prevents double-counting.
+            const newExamQuestions = [...examQuestions];
+            newExamQuestions[currentQuestionIndex].answeredCorrectly = true;
+            setExamQuestions(newExamQuestions);
         }
         await speak('Correct!');
         handleNextQuestion();
@@ -200,7 +205,13 @@ export default function ExamPage() {
       setInteractionState('listening');
     }
   }, [userAnswer, interactionState, currentQuestion, stopListening, toast, speak, micPermission, startListening, handleNextQuestion, examQuestions]);
-  
+
+  const handleRetryQuestion = useCallback(() => {
+    setUserAnswer('');
+    setFeedback(null);
+    setInteractionState('idle');
+  }, []);
+
   useEffect(() => {
     async function loadData() {
       setIsLoading(true);
@@ -211,12 +222,6 @@ export default function ExamPage() {
     loadData();
   }, []);
 
-  const handleRetryQuestion = useCallback(() => {
-    setUserAnswer('');
-    setFeedback(null);
-    setInteractionState('idle');
-  }, []);
-
   useEffect(() => {
     if (transcript) {
       setUserAnswer(transcript);
@@ -224,12 +229,12 @@ export default function ExamPage() {
   
     if (wasListening.current && !isListening) {
       const finalTranscript = transcript.trim();
-  
+
       if (interactionState === 'retake_prompt') {
         if (finalTranscript && (finalTranscript.toLowerCase().includes('yes') || finalTranscript.toLowerCase().includes('okay'))) {
           handleRetryQuestion();
         }
-        return;
+        return; 
       }
   
       if (interactionState === 'listening' && finalTranscript) {
