@@ -30,9 +30,11 @@ export default function LearningPage() {
   const [currentIndex, setCurrentIndex] = useState(0);
   const [showAnswer, setShowAnswer] = useState(false);
   const [isPlaying, setIsPlaying] = useState(false);
-  const [currentAudio, setCurrentAudio] = useState<HTMLAudioElement | null>(null);
   const [loadingAudio, setLoadingAudio] = useState<'question' | 'answer' | null>(null);
   const [isPlayingSequence, setIsPlayingSequence] = useState(false);
+  
+  // Use ref for currentAudio to avoid dependency issues
+  const currentAudioRef = useRef<HTMLAudioElement | null>(null);
   const audioCache = useRef<Record<string, { questionAudio: string; answerAudio: string }>>({});
 
   const { isListening, transcript } = useSpeechRecognition();
@@ -50,14 +52,14 @@ export default function LearningPage() {
     loadData();
   }, []);
 
-  // FIXED: Stable playAudio function with useCallback
+  // FIXED: playAudio function without circular dependencies
   const playAudio = useCallback(async (type: 'question' | 'answer'): Promise<void> => {
     if (loadingAudio || !currentQuestion) return;
 
-    // Stop any currently playing audio
-    if (currentAudio) {
-      currentAudio.pause();
-      setCurrentAudio(null);
+    // Stop any currently playing audio using the ref
+    if (currentAudioRef.current) {
+      currentAudioRef.current.pause();
+      currentAudioRef.current = null;
       setIsPlaying(false);
     }
 
@@ -81,19 +83,19 @@ export default function LearningPage() {
       }
 
       const audio = new Audio(audioSrc);
-      setCurrentAudio(audio);
+      currentAudioRef.current = audio;
 
       return new Promise((resolve, reject) => {
         audio.onended = () => {
           setIsPlaying(false);
-          setCurrentAudio(null);
+          currentAudioRef.current = null;
           resolve();
         };
         
         audio.onerror = (error) => {
           console.error("Audio playback error:", error);
           setIsPlaying(false);
-          setCurrentAudio(null);
+          currentAudioRef.current = null;
           setLoadingAudio(null);
           reject(error);
         };
@@ -108,39 +110,43 @@ export default function LearningPage() {
       setLoadingAudio(null);
       throw error;
     }
-  }, [currentQuestion, loadingAudio, currentAudio]);
+  }, [currentQuestion, loadingAudio]); // REMOVED currentAudio from dependencies
 
-  // FIXED: Stable playSequence function
+  // FIXED: playSequence function
   const playSequence = useCallback(async (): Promise<void> => {
     if (isPlayingSequence || !currentQuestion) return;
     
+    console.log('Starting play sequence');
     setIsPlayingSequence(true);
     
     try {
-      // Play question
+      console.log('Playing question...');
       await playAudio('question');
+      console.log('Question finished, showing answer');
       setShowAnswer(true);
       
-      // Brief pause between question and answer
-      await new Promise(resolve => setTimeout(resolve, 800));
+      console.log('Pausing before answer...');
+      await new Promise(resolve => setTimeout(resolve, 1000));
       
-      // Play answer
+      console.log('Playing answer...');
       await playAudio('answer');
+      console.log('Answer finished');
       
     } catch (error) {
       console.error("Error in play sequence:", error);
     } finally {
+      console.log('Play sequence completed');
       setIsPlayingSequence(false);
       setIsPlaying(false);
     }
   }, [isPlayingSequence, currentQuestion, playAudio]);
 
-  // FIXED: Stable handler functions with proper dependencies
+  // FIXED: Stable handler functions
   const handlePlayPause = useCallback(async (): Promise<void> => {
     if (isPlaying) {
       // Pause current audio
-      if (currentAudio) {
-        currentAudio.pause();
+      if (currentAudioRef.current) {
+        currentAudioRef.current.pause();
         setIsPlaying(false);
         setIsPlayingSequence(false);
       }
@@ -148,7 +154,7 @@ export default function LearningPage() {
       // Start playing sequence
       await playSequence();
     }
-  }, [isPlaying, currentAudio, playSequence]);
+  }, [isPlaying, playSequence]);
 
   const handleRepeat = useCallback(_.debounce(() => {
     playAudio('question');
@@ -175,28 +181,28 @@ export default function LearningPage() {
       } else if (command.includes('play') || command.includes('start')) {
         handlePlayPause();
       } else if (command.includes('stop') || command.includes('pause')) {
-        if (currentAudio) {
-          currentAudio.pause();
+        if (currentAudioRef.current) {
+          currentAudioRef.current.pause();
           setIsPlaying(false);
           setIsPlayingSequence(false);
         }
       }
     }
-  }, [transcript, handleNext, handlePrev, handleRepeat, handlePlayPause, currentAudio]);
+  }, [transcript, handleNext, handlePrev, handleRepeat, handlePlayPause]);
 
   // Cleanup effects
   useEffect(() => {
     return () => {
-      if (currentAudio) {
-        currentAudio.pause();
+      if (currentAudioRef.current) {
+        currentAudioRef.current.pause();
       }
     };
-  }, [currentAudio]);
+  }, []);
 
   useEffect(() => {
     // Reset audio when question changes
-    if (currentAudio) {
-      currentAudio.pause();
+    if (currentAudioRef.current) {
+      currentAudioRef.current.pause();
       setIsPlaying(false);
       setIsPlayingSequence(false);
     }
@@ -263,7 +269,7 @@ export default function LearningPage() {
                     <Mic className={cn("text-muted-foreground transition-colors", isListening && "text-primary animate-pulse")} />
                     <Button variant="outline" onClick={() => {
                         setLearningState('category_selection');
-                        if (currentAudio) currentAudio.pause();
+                        if (currentAudioRef.current) currentAudioRef.current.pause();
                         setIsPlaying(false);
                     }}>Change Category</Button>
                 </div>
