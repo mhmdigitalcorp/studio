@@ -80,12 +80,14 @@ import { manageUser } from '@/ai/flows/manage-user';
 import { bulkUpload } from '@/ai/flows/bulk-upload';
 
 
-// Mock data fetching function. In a real app, this would be `onSnapshot` from Firebase.
 const fetchUsers = async (): Promise<User[]> => {
-    // Simulate API call
-  await new Promise(res => setTimeout(res, 500));
-  const { users } = await manageUser({ action: 'bulkDelete', userIds: [] }); // This is a trick to get the current list
-  return users || [];
+  const { success, users, message } = await manageUser({ action: 'getAll' });
+  if (success) {
+    return users || [];
+  } else {
+    console.error("Failed to fetch users:", message);
+    return [];
+  }
 };
 
 export default function UsersPage() {
@@ -105,7 +107,6 @@ export default function UsersPage() {
     name: '',
     email: '',
     phone: '',
-    password: '',
     status: 'Active',
   });
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -113,7 +114,6 @@ export default function UsersPage() {
 
   const loadUsers = useCallback(async () => {
     setIsLoading(true);
-    // In a real app, you would set up a Firestore listener here.
     const fetchedUsers = await fetchUsers();
     setUsers(fetchedUsers);
     setIsLoading(false);
@@ -150,9 +150,9 @@ export default function UsersPage() {
   const handleDeleteSelected = async () => {
     setIsProcessing(true);
     const result = await manageUser({ action: 'bulkDelete', userIds: selectedUsers });
-    if (result.success) {
+    if (result.success && result.users) {
       toast({ title: 'Success', description: result.message });
-      await loadUsers(); // Reload users from "backend"
+      setUsers(result.users);
       setSelectedUsers([]);
     } else {
       toast({ title: 'Error', description: result.message, variant: 'destructive' });
@@ -168,7 +168,7 @@ export default function UsersPage() {
       setUsers(prev => [...prev, result.user!]);
       toast({ title: 'Success', description: 'User added successfully.' });
       setAddUserDialogOpen(false);
-      setNewUser({ name: '', email: '', phone: '', password: '', status: 'Active' });
+      setNewUser({ name: '', email: '', phone: '', status: 'Active' });
     } else {
       toast({ title: 'Error', description: result.message, variant: 'destructive' });
     }
@@ -202,7 +202,7 @@ export default function UsersPage() {
       const csvData = await file.text();
       const result = await bulkUpload({ dataType: 'users', csvData });
 
-      if (result.success) {
+      if (result.success && result.updatedData) {
         toast({ title: 'Upload Successful', description: result.message });
         setUsers(result.updatedData as User[]);
       } else {
@@ -223,7 +223,7 @@ export default function UsersPage() {
     const headers = ['id', 'name', 'email', 'phone', 'status', 'lastLogin', 'score', 'progress', 'avatar'];
     const csvContent = [
       headers.join(','),
-      ...users.map(user => headers.map(header => (user as any)[header]).join(','))
+      ...users.map(user => headers.map(header => `"${(user as any)[header]}"`).join(','))
     ].join('\n');
     
     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
@@ -313,121 +313,123 @@ export default function UsersPage() {
           </div>
         </CardHeader>
         <CardContent>
-          {isProcessing && <div className="absolute inset-0 bg-background/50 flex items-center justify-center z-10"><Loader2 className="h-8 w-8 animate-spin" /></div>}
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead className="w-12">
-                  <Checkbox
-                    checked={
-                      !isLoading && filteredUsers.length > 0 && selectedUsers.length === filteredUsers.length
-                    }
-                    onCheckedChange={(checked) =>
-                      handleSelectAll(Boolean(checked))
-                    }
-                    aria-label="Select all"
-                    disabled={isLoading}
-                  />
-                </TableHead>
-                <TableHead>User</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead>Learning Progress</TableHead>
-                <TableHead>Last Exam Score</TableHead>
-                <TableHead>Last Login</TableHead>
-                <TableHead className="text-right">Actions</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {isLoading ? (
-                Array.from({ length: 5 }).map((_, i) => (
-                  <TableRow key={`skel-${i}`}>
-                    <TableCell colSpan={7} className="p-4 text-center">
-                        <Loader2 className="mx-auto h-6 w-6 animate-spin text-muted-foreground" />
-                    </TableCell>
-                  </TableRow>
-                ))
-              ) : filteredUsers.length === 0 ? (
-                 <TableRow>
-                    <TableCell colSpan={7} className="p-4 text-center text-muted-foreground">
-                        No users found.
-                    </TableCell>
-                  </TableRow>
-              ) : (
-                filteredUsers.map((user) => (
-                  <TableRow
-                    key={user.id}
-                    data-state={selectedUsers.includes(user.id) && 'selected'}
-                  >
-                    <TableCell>
-                      <Checkbox
-                        checked={selectedUsers.includes(user.id)}
-                        onCheckedChange={(checked) =>
-                          handleSelectUser(user.id, Boolean(checked))
-                        }
-                        aria-label={`Select user ${user.name}`}
-                      />
-                    </TableCell>
-                    <TableCell>
-                      <div className="flex items-center gap-3">
-                        <Avatar>
-                          <AvatarImage src={user.avatar} />
-                          <AvatarFallback>{user.name.charAt(0)}</AvatarFallback>
-                        </Avatar>
-                        <div>
-                          <div className="font-medium">{user.name}</div>
-                          <div className="text-sm text-muted-foreground">
-                            {user.email}
+          <div className="relative">
+            {isProcessing && <div className="absolute inset-0 bg-background/50 flex items-center justify-center z-10 rounded-lg"><Loader2 className="h-8 w-8 animate-spin" /></div>}
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead className="w-12">
+                    <Checkbox
+                      checked={
+                        !isLoading && filteredUsers.length > 0 && selectedUsers.length === filteredUsers.length
+                      }
+                      onCheckedChange={(checked) =>
+                        handleSelectAll(Boolean(checked))
+                      }
+                      aria-label="Select all"
+                      disabled={isLoading}
+                    />
+                  </TableHead>
+                  <TableHead>User</TableHead>
+                  <TableHead>Status</TableHead>
+                  <TableHead>Learning Progress</TableHead>
+                  <TableHead>Last Exam Score</TableHead>
+                  <TableHead>Last Login</TableHead>
+                  <TableHead className="text-right">Actions</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {isLoading ? (
+                  Array.from({ length: 5 }).map((_, i) => (
+                    <TableRow key={`skel-${i}`}>
+                      <TableCell colSpan={7} className="p-4 text-center">
+                          <Loader2 className="mx-auto h-6 w-6 animate-spin text-muted-foreground" />
+                      </TableCell>
+                    </TableRow>
+                  ))
+                ) : filteredUsers.length === 0 ? (
+                  <TableRow>
+                      <TableCell colSpan={7} className="p-4 text-center text-muted-foreground">
+                          No users found.
+                      </TableCell>
+                    </TableRow>
+                ) : (
+                  filteredUsers.map((user) => (
+                    <TableRow
+                      key={user.id}
+                      data-state={selectedUsers.includes(user.id) && 'selected'}
+                    >
+                      <TableCell>
+                        <Checkbox
+                          checked={selectedUsers.includes(user.id)}
+                          onCheckedChange={(checked) =>
+                            handleSelectUser(user.id, Boolean(checked))
+                          }
+                          aria-label={`Select user ${user.name}`}
+                        />
+                      </TableCell>
+                      <TableCell>
+                        <div className="flex items-center gap-3">
+                          <Avatar>
+                            <AvatarImage src={user.avatar} />
+                            <AvatarFallback>{user.name.charAt(0)}</AvatarFallback>
+                          </Avatar>
+                          <div>
+                            <div className="font-medium">{user.name}</div>
+                            <div className="text-sm text-muted-foreground">
+                              {user.email}
+                            </div>
                           </div>
                         </div>
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      <Badge
-                        variant={
-                          user.status === 'Active' ? 'default' : 'outline'
-                        }
-                      >
-                        {user.status}
-                      </Badge>
-                    </TableCell>
-                    <TableCell>
-                      <div className="flex items-center gap-2">
-                        <Progress value={user.progress} className="w-24" />
-                        <span>{user.progress}%</span>
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      <span
-                        className={`font-medium ${
-                          user.score > 80 ? 'text-green-400' : 'text-orange-400'
-                        }`}
-                      >
-                        {user.score}%
-                      </span>
-                    </TableCell>
-                    <TableCell>{user.lastLogin}</TableCell>
-                    <TableCell className="text-right">
-                      <DropdownMenu>
-                        <DropdownMenuTrigger asChild>
-                          <Button variant="ghost" className="h-8 w-8 p-0">
-                            <span className="sr-only">Open menu</span>
-                            <MoreHorizontal className="h-4 w-4" />
-                          </Button>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end">
-                          <DropdownMenuItem>View Details</DropdownMenuItem>
-                          <DropdownMenuItem>Reset Password</DropdownMenuItem>
-                          <DropdownMenuItem className="text-destructive">
-                            Deactivate User
-                          </DropdownMenuItem>
-                        </DropdownMenuContent>
-                      </DropdownMenu>
-                    </TableCell>
-                  </TableRow>
-                ))
-              )}
-            </TableBody>
-          </Table>
+                      </TableCell>
+                      <TableCell>
+                        <Badge
+                          variant={
+                            user.status === 'Active' ? 'default' : 'outline'
+                          }
+                        >
+                          {user.status}
+                        </Badge>
+                      </TableCell>
+                      <TableCell>
+                        <div className="flex items-center gap-2">
+                          <Progress value={user.progress} className="w-24" />
+                          <span>{user.progress}%</span>
+                        </div>
+                      </TableCell>
+                      <TableCell>
+                        <span
+                          className={`font-medium ${
+                            user.score > 80 ? 'text-green-400' : 'text-orange-400'
+                          }`}
+                        >
+                          {user.score}%
+                        </span>
+                      </TableCell>
+                      <TableCell>{user.lastLogin}</TableCell>
+                      <TableCell className="text-right">
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Button variant="ghost" className="h-8 w-8 p-0">
+                              <span className="sr-only">Open menu</span>
+                              <MoreHorizontal className="h-4 w-4" />
+                            </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end">
+                            <DropdownMenuItem>View Details</DropdownMenuItem>
+                            <DropdownMenuItem>Reset Password</DropdownMenuItem>
+                            <DropdownMenuItem className="text-destructive">
+                              Deactivate User
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                      </TableCell>
+                    </TableRow>
+                  ))
+                )}
+              </TableBody>
+            </Table>
+          </div>
         </CardContent>
       </Card>
 
@@ -519,71 +521,6 @@ export default function UsersPage() {
             <AlertDialogDescription>
               This action cannot be undone. This will permanently delete the
               selected {selectedUsers.length} user(s) and their data.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel disabled={isProcessing}>Cancel</AlertDialogCancel>
-            <AlertDialogAction
-              onClick={handleDeleteSelected}
-              className="bg-destructive hover:bg-destructive/90"
-              disabled={isProcessing}
-            >
-             {isProcessing && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-              Delete
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
-
-      {/* Email Dialog */}
-      <Dialog open={isEmailDialogOpen} onOpenChange={setEmailDialogOpen}>
-        <DialogContent className="sm:max-w-3xl">
-          <DialogHeader>
-            <DialogTitle className="font-headline">
-              Send Email to {selectedUsers.length} User(s)
-            </DialogTitle>
-            <DialogDescription>
-              Generate and send an email campaign to the selected users.
-            </DialogDescription>
-          </DialogHeader>
-          <div className="grid gap-4 py-4">
-            <div className="grid grid-cols-4 items-center gap-4">
-              <Label htmlFor="subject" className="text-right">
-                Subject
-              </Label>
-              <Input
-                id="subject"
-                value={emailContent.subject}
-                onChange={(e) =>
-                  setEmailContent({ ...emailContent, subject: e.target.value })
-                }
-                className="col-span-3"
-              />
-            </div>
-            <div className="grid grid-cols-4 items-start gap-4">
-              <Label htmlFor="body" className="text-right pt-2">
-                Body
-              </Label>
-              <Textarea
-                id="body"
-                value={emailContent.body}
-                onChange={(e) =>
-                  setEmailContent({ ...emailContent, body: e.target.value })
-                }
-                className="col-span-3"
-                rows={10}
-              />
-            </div>
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={handleGenerateEmail}>
-              <Wand2 className="mr-2 h-4 w-4" />
-              Generate with AI
-            </Button>
-            <Button>Send Email</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-    </>
-  );
+            </odules>
+  "exclude": ["node_modules"]
 }
