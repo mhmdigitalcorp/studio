@@ -57,17 +57,14 @@ export default function LearningPage() {
 
 
   useEffect(() => {
-    // Start listening when the component mounts
-    startListening();
-    
     // Cleanup on unmount
     return () => {
-      stopListening();
       if (currentAudio) {
         currentAudio.pause();
       }
+      stopListening();
     };
-  }, [startListening, stopListening]);
+  }, [currentAudio, stopListening]);
 
 
   useEffect(() => {

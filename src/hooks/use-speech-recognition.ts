@@ -47,12 +47,17 @@ export const useSpeechRecognition = () => {
     recognition.onerror = (event: any) => {
       // The "no-speech" error is common and not a critical failure.
       // We can ignore it to avoid cluttering the console.
-      if (event.error === 'no-speech') {
+      if (event.error === 'no-speech' || event.error === 'aborted') {
         setIsListening(false);
         isStartingRef.current = false;
         return;
       }
-      console.error('Speech recognition error', event.error);
+      if (event.error === 'not-allowed') {
+        // Handle permission denial gracefully
+        console.warn('Speech recognition permission denied.');
+      } else {
+        console.error('Speech recognition error', event.error);
+      }
       setIsListening(false);
       isStartingRef.current = false;
     };
@@ -66,6 +71,7 @@ export const useSpeechRecognition = () => {
 
     return () => {
       if (recognitionRef.current) {
+        recognitionRef.current.onend = null;
         recognitionRef.current.stop();
         recognitionRef.current = null;
       }
