@@ -88,7 +88,7 @@ export async function sendEmail(options: EmailOptions) {
     const info = await transporter.sendMail(mailOptions);
     console.log('Email sent successfully. Response:', info.response);
     return info;
-  } catch (error) {
+  } catch (error: any) {
     console.error('Nodemailer error:', error);
     throw new Error(`Failed to send email via Nodemailer: ${error}`);
   }
