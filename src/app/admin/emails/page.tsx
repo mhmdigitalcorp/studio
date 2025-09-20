@@ -485,7 +485,7 @@ export default function EmailsPage() {
             </div>
              <div className="grid gap-2">
               <Label>Additional Instructions</Label>
-              <Textarea placeholder="e.g., Keep it concise, under 150 words." value={aiFormState.additionalInstructions} onChange={e => setAiFormState(prev => ({...prev, additionalInstructions: e.targe.value}))}/>
+              <Textarea placeholder="e.g., Keep it concise, under 150 words." value={aiFormState.additionalInstructions} onChange={e => setAiFormState(prev => ({...prev, additionalInstructions: e.target.value}))}/>
             </div>
           </div>
           <DialogFooter>

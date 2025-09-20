@@ -10,10 +10,9 @@ import {
   CardTitle,
 } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Settings as SettingsIcon, KeyRound, Save, Mail, TestTube2, AlertTriangle, CheckCircle2, Loader2, Wand2 } from 'lucide-react';
+import { Settings as SettingsIcon, Save, Mail, TestTube2, AlertTriangle, CheckCircle2, Loader2, Wand2 } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Separator } from '@/components/ui/separator';
 import { Switch } from '@/components/ui/switch';
 import {
   Dialog,
@@ -31,7 +30,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
 import { useToast } from '@/hooks/use-toast';
 import { testEmailService } from '@/ai/flows/test-email-service';
@@ -91,6 +89,14 @@ export default function SettingsPage() {
       setEmailStatus('disabled');
     }
   }, [emailConfig, isEmailEnabled]);
+
+  useEffect(() => {
+     if (!isAiEnabled) {
+      setAiStatus('disabled');
+    } else {
+      setAiStatus(aiApiKey ? 'operational' : 'not-configured');
+    }
+  }, [aiApiKey, isAiEnabled]);
   
   // Pre-fill dialog when it opens
   const openConfigureDialog = () => {
@@ -110,11 +116,6 @@ export default function SettingsPage() {
   
   const handleToggleAiService = (enabled: boolean) => {
     setIsAiEnabled(enabled);
-     if (!enabled) {
-      setAiStatus('disabled');
-    } else {
-      setAiStatus(aiApiKey ? 'operational' : 'not-configured');
-    }
   };
 
   const handleSaveConfiguration = () => {
@@ -175,13 +176,11 @@ export default function SettingsPage() {
     await new Promise(resolve => setTimeout(resolve, 1000));
     // In a real app this would call a secure backend function
     if (aiApiKey) {
-        setAiStatus('operational');
         toast({
             title: "AI Key Saved",
             description: "The AI API key has been securely stored.",
         });
     } else {
-         setAiStatus('not-configured');
          toast({
             title: "AI Key Cleared",
             description: "The AI API key has been removed.",
