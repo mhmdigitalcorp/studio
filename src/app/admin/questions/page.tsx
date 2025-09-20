@@ -319,7 +319,7 @@ export default function QuestionsPage() {
                 <DialogHeader>
                     <DialogTitle className="font-headline">Question Details</DialogTitle>
                     <DialogDescription>
-                        <Badge variant="secondary">{selectedQuestion.category}</Badge>
+                        Full details for question from the <Badge variant="secondary">{selectedQuestion.category}</Badge> category.
                     </DialogDescription>
                 </DialogHeader>
                 <div className="space-y-4 py-4">
