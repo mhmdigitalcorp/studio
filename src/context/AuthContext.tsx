@@ -1,8 +1,15 @@
 // src/context/AuthContext.tsx
 'use client';
 import { createContext, useContext, useEffect, useState, ReactNode } from 'react';
-import { onAuthStateChanged, User as FirebaseUser, createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut } from 'firebase/auth';
-import { doc, setDoc, getDoc, DocumentData } from 'firebase/firestore';
+import { 
+  onAuthStateChanged, 
+  User as FirebaseUser, 
+  createUserWithEmailAndPassword, 
+  signInWithEmailAndPassword, 
+  signOut,
+  deleteUser 
+} from 'firebase/auth';
+import { doc, getDoc, DocumentData } from 'firebase/firestore';
 import { auth, db } from '@/lib/firebase';
 import { useRouter } from 'next/navigation';
 import { manageUser } from '@/ai/flows/manage-user';
@@ -13,13 +20,17 @@ interface User extends DocumentData {
   email: string | null;
   name: string | null;
   role: 'user' | 'admin';
+  status?: string;
+  lastLogin?: string;
+  score?: number;
+  progress?: number;
 }
 
 interface AuthContextType {
   currentUser: User | null;
   loading: boolean;
-  signUp: (credentials: { email: any; password: any; name: any; }) => Promise<any>;
-  signIn: (email: any, pass: any) => Promise<any>;
+  signUp: (credentials: { email: string; password: string; name: string; }) => Promise<any>;
+  signIn: (email: string, pass: string) => Promise<any>;
   logOut: () => Promise<any>;
 }
 
@@ -42,6 +53,10 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
               email: user.email,
               name: user.displayName || 'New User',
               role: 'user',
+              status: 'Active',
+              lastLogin: new Date().toISOString().split('T')[0],
+              score: 0,
+              progress: 0,
             };
             setCurrentUser(tempUser);
         }
@@ -54,31 +69,45 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     return () => unsubscribe();
   }, []);
   
-  const signUp = async ({ email, password, name }: {email:any, password:any, name:any}) => {
-    const userCredential = await createUserWithEmailAndPassword(auth, email, password);
-    
-    // After creating auth user, call the secure backend flow to create the Firestore document.
-    const newUser: Partial<AppUser> = {
-      id: userCredential.user.uid, // Important: Use the auth UID as the document ID
-      name,
-      email,
-      status: 'Active',
-      role: 'user'
-    };
+  const signUp = async ({ email, password, name }: {email: string, password: string, name: string}) => {
+    try {
+      const userCredential = await createUserWithEmailAndPassword(auth, email, password);
+      
+      const newUser: Partial<AppUser> = {
+        id: userCredential.user.uid,
+        name,
+        email,
+        status: 'Active',
+        role: 'user',
+        lastLogin: new Date().toISOString().split('T')[0],
+        score: 0,
+        progress: 0,
+      };
 
-    // This calls the secure backend flow.
-    const result = await manageUser({ action: 'create', userData: newUser, userId: userCredential.user.uid });
+      const result = await manageUser({ 
+        action: 'create', 
+        userData: newUser, 
+        userId: userCredential.user.uid 
+      });
 
-    if (!result.success) {
-      // If Firestore doc creation fails, we should consider how to handle it.
-      // For now, we'll log the error. In a real app, you might delete the auth user
-      // or add them to a retry queue.
-      console.error("Failed to create user document in Firestore:", result.message);
-      throw new Error(result.message);
+      if (!result.success) {
+        await deleteUser(userCredential.user);
+        console.error("Failed to create user document in Firestore:", result.message);
+        throw new Error(result.message);
+      }
+      
+      return userCredential;
+    } catch (error: any) {
+      console.error("Sign up error:", error);
+      
+      if (error.code === 'auth/email-already-in-use') {
+        throw new Error('This email is already registered. Please sign in or use a different email.');
+      } else if (error.code === 'auth/weak-password') {
+        throw new Error('Password is too weak. Please use a stronger password.');
+      } else {
+        throw new Error('Failed to create account. Please try again.');
+      }
     }
-    
-    // The user object in the context will be set by the onAuthStateChanged listener.
-    return userCredential;
   };
   
   const signIn = (email:any, password:any) => {

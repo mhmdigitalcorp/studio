@@ -17,7 +17,6 @@ import { ai } from '@/ai/genkit';
 import { z } from 'zod';
 import { User } from '@/lib/data';
 import { db } from '@/lib/firebase-admin'; // Using admin SDK
-import { collection, doc, getDocs, writeBatch, getDoc, setDoc, deleteDoc } from 'firebase/firestore';
 
 
 const ManageUserInputSchema = z.object({
@@ -49,12 +48,12 @@ const manageUserFlow = ai.defineFlow(
   },
   async (input) => {
     // In a real app, you would check admin privileges here for certain actions.
-    const usersCollection = collection(db, 'users');
+    const usersCollection = db.collection('users');
 
     try {
         switch (input.action) {
           case 'getAll': {
-             const snapshot = await getDocs(usersCollection);
+             const snapshot = await usersCollection.get();
              const users = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as User));
              return { success: true, message: 'Users fetched successfully.', users };
           }
@@ -79,7 +78,7 @@ const manageUserFlow = ai.defineFlow(
               progress: 0,
               role: input.userData.role || 'user',
             };
-            await setDoc(doc(db, 'users', newId), newUser);
+            await usersCollection.doc(newId).set(newUser);
             return { success: true, message: 'User created successfully.', user: newUser };
           }
 
@@ -87,9 +86,9 @@ const manageUserFlow = ai.defineFlow(
             if (!input.userId || !input.userData) {
               return { success: false, message: 'User ID or data is missing for update action.' };
             }
-             const userRef = doc(db, 'users', input.userId);
-             await setDoc(userRef, input.userData, { merge: true });
-             const updatedDoc = await getDoc(userRef);
+             const userRef = usersCollection.doc(input.userId);
+             await userRef.set(input.userData, { merge: true });
+             const updatedDoc = await userRef.get();
              return { success: true, message: 'User updated successfully.', user: { id: updatedDoc.id, ...updatedDoc.data() } as User };
           }
     
@@ -97,7 +96,7 @@ const manageUserFlow = ai.defineFlow(
             if (!input.userId) {
               return { success: false, message: 'User ID is missing for delete action.' };
             }
-            await deleteDoc(doc(db, 'users', input.userId));
+            await usersCollection.doc(input.userId).delete();
             return { success: true, message: 'User deleted successfully.' };
           }
           
@@ -105,13 +104,13 @@ const manageUserFlow = ai.defineFlow(
             if (!input.userIds || input.userIds.length === 0) {
                 return { success: false, message: 'User IDs are missing for bulk delete action.' };
             }
-            const batch = writeBatch(db);
+            const batch = db.batch();
             input.userIds.forEach(id => {
-                batch.delete(doc(db, 'users', id));
+                batch.delete(usersCollection.doc(id));
             });
             await batch.commit();
 
-            const snapshot = await getDocs(usersCollection);
+            const snapshot = await usersCollection.get();
             const users = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as User));
             return { success: true, message: `${input.userIds.length} users deleted successfully.`, users };
           }
