@@ -34,11 +34,19 @@ export default function UserLoginPage() {
       router.push('/user/learning');
     } catch (error: any) {
       console.error(error);
-      toast({
-        title: 'Sign In Failed',
-        description: error.message,
-        variant: 'destructive',
-      });
+      if (error.code === 'auth/invalid-credential') {
+        toast({
+          title: 'Sign In Failed',
+          description: 'Invalid email or password. Please try again.',
+          variant: 'destructive',
+        });
+      } else {
+        toast({
+          title: 'Sign In Failed',
+          description: 'An unexpected error occurred. Please try again later.',
+          variant: 'destructive',
+        });
+      }
     }
     setLoading(false);
   };
