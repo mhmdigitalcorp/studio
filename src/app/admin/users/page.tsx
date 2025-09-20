@@ -521,6 +521,68 @@ export default function UsersPage() {
             <AlertDialogDescription>
               This action cannot be undone. This will permanently delete the
               selected {selectedUsers.length} user(s) and their data.
-            </odules>
-  "exclude": ["node_modules"]
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleDeleteSelected}
+              className="bg-destructive hover:bg-destructive/90"
+              disabled={isProcessing}
+            >
+             {isProcessing ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Email Dialog */}
+      <Dialog open={isEmailDialogOpen} onOpenChange={setEmailDialogOpen}>
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle className="font-headline flex items-center gap-2">
+              <Mail /> Compose Email
+            </DialogTitle>
+            <DialogDescription>
+              Sending to {selectedUsers.length} user(s). You can generate content
+              with AI.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-4 py-4">
+            <div className="grid gap-2">
+              <Label htmlFor="email-subject">Subject</Label>
+              <Input
+                id="email-subject"
+                value={emailContent.subject}
+                onChange={(e) =>
+                  setEmailContent({ ...emailContent, subject: e.target.value })
+                }
+              />
+            </div>
+            <div className="grid gap-2">
+              <Label htmlFor="email-body">Body</Label>
+              <Textarea
+                id="email-body"
+                rows={10}
+                value={emailContent.body}
+                onChange={(e) =>
+                  setEmailContent({ ...emailContent, body: e.target.value })
+                }
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={handleGenerateEmail}>
+              <Wand2 className="mr-2 h-4 w-4" />
+              Generate with AI
+            </Button>
+            <DialogClose asChild>
+              <Button>Send Email</Button>
+            </DialogClose>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </>
+  );
 }
