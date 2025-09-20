@@ -14,7 +14,10 @@ export const useTTS = () => {
       
       return new Promise<void>((resolve, reject) => {
         utterance.onend = () => resolve();
-        utterance.onerror = (event) => reject(event);
+        utterance.onerror = (event: SpeechSynthesisErrorEvent) => {
+            // Create a more informative error object
+            reject(new Error(`Speech synthesis error: ${event.error}`));
+        };
         window.speechSynthesis.speak(utterance);
       });
     } else {
