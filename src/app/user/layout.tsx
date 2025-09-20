@@ -1,7 +1,16 @@
+'use client';
+
 import Link from 'next/link';
+import { Menu } from 'lucide-react';
 import { Logo } from '@/components/logo';
 import { UserNav } from '@/components/user-nav';
 import { Button } from '@/components/ui/button';
+import {
+  Sheet,
+  SheetContent,
+  SheetTrigger,
+  SheetClose,
+} from '@/components/ui/sheet';
 
 export default function UserLayout({
   children,
@@ -34,10 +43,52 @@ export default function UserLayout({
         </nav>
         <div className="flex items-center gap-4 md:ml-auto">
           <UserNav />
+          <Sheet>
+            <SheetTrigger asChild>
+              <Button
+                variant="outline"
+                size="icon"
+                className="shrink-0 md:hidden"
+              >
+                <Menu className="h-5 w-5" />
+                <span className="sr-only">Toggle navigation menu</span>
+              </Button>
+            </SheetTrigger>
+            <SheetContent side="right">
+              <nav className="grid gap-6 text-lg font-medium mt-8">
+                <SheetClose asChild>
+                  <Link
+                    href="/user/learning"
+                    className="text-muted-foreground hover:text-foreground"
+                  >
+                    Learning
+                  </Link>
+                </SheetClose>
+                <SheetClose asChild>
+                  <Link
+                    href="/user/exam"
+                    className="text-muted-foreground hover:text-foreground"
+                  >
+                    Exam
+                  </Link>
+                </SheetClose>
+                <SheetClose asChild>
+                  <Link
+                    href="/user/profile"
+                    className="text-muted-foreground hover:text-foreground"
+                  >
+                    Profile
+                  </Link>
+                </SheetClose>
+              </nav>
+            </SheetContent>
+          </Sheet>
         </div>
       </header>
-      <main className="flex flex-1 flex-col gap-4 p-4 md:gap-8 md:p-8 bg-card">
-        {children}
+      <main className="flex flex-1 flex-col items-center gap-4 p-4 md:gap-8 md:p-8 bg-card">
+        <div className="w-full max-w-5xl">
+         {children}
+        </div>
       </main>
     </div>
   );

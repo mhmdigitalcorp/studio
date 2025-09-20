@@ -33,7 +33,7 @@ export default function UserProfilePage() {
         <div className="md:col-span-1">
             <Card>
                 <CardHeader>
-                    <CardTitle className="font-headline text-2xl flex items-center gap-2">
+                    <CardTitle className="font-headline text-xl md:text-2xl flex items-center gap-2">
                         <User />
                         My Profile
                     </CardTitle>
@@ -70,7 +70,7 @@ export default function UserProfilePage() {
         <div className="md:col-span-2">
             <Card>
                 <CardHeader>
-                    <CardTitle className="font-headline text-2xl flex items-center gap-2">
+                    <CardTitle className="font-headline text-xl md:text-2xl flex items-center gap-2">
                         <History />
                         Learning & Exam History
                     </CardTitle>
@@ -88,28 +88,30 @@ export default function UserProfilePage() {
                     <Separator className="my-6" />
 
                     <h4 className="font-semibold mb-4">Recent Exams</h4>
-                     <Table>
-                        <TableHeader>
-                            <TableRow>
-                                <TableHead>Date</TableHead>
-                                <TableHead>Score</TableHead>
-                                <TableHead>Topics</TableHead>
-                            </TableRow>
-                        </TableHeader>
-                        <TableBody>
-                            {examHistory.map((exam, i) => (
-                                <TableRow key={i}>
-                                    <TableCell>{exam.date}</TableCell>
-                                    <TableCell>
-                                        <span className={`font-bold ${exam.score >= 80 ? 'text-green-400' : 'text-orange-400'}`}>
-                                            {exam.score}%
-                                        </span>
-                                    </TableCell>
-                                    <TableCell className="text-muted-foreground">{exam.topics}</TableCell>
+                     <div className="overflow-x-auto">
+                        <Table>
+                            <TableHeader>
+                                <TableRow>
+                                    <TableHead>Date</TableHead>
+                                    <TableHead>Score</TableHead>
+                                    <TableHead>Topics</TableHead>
                                 </TableRow>
-                            ))}
-                        </TableBody>
-                    </Table>
+                            </TableHeader>
+                            <TableBody>
+                                {examHistory.map((exam, i) => (
+                                    <TableRow key={i}>
+                                        <TableCell>{exam.date}</TableCell>
+                                        <TableCell>
+                                            <span className={`font-bold ${exam.score >= 80 ? 'text-green-400' : 'text-orange-400'}`}>
+                                                {exam.score}%
+                                            </span>
+                                        </TableCell>
+                                        <TableCell className="text-muted-foreground">{exam.topics}</TableCell>
+                                    </TableRow>
+                                ))}
+                            </TableBody>
+                        </Table>
+                    </div>
                 </CardContent>
             </Card>
         </div>
