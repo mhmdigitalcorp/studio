@@ -4,7 +4,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Question } from '@/lib/data';
 import { generateVoiceLessons } from '@/ai/flows/generate-voice-lessons';
-import { Play, Pause, SkipForward, SkipBack, Volume2, Loader2, Info, Mic, ArrowLeft } from 'lucide-react';
+import { Play, Pause, SkipForward, SkipBack, Volume2, Loader2, Info, Mic } from 'lucide-react';
 import { useSpeechRecognition } from '@/hooks/use-speech-recognition';
 import { cn } from '@/lib/utils';
 import _ from 'lodash';
@@ -61,9 +61,53 @@ export default function LearningPage() {
     setCurrentIndex(i => (i - 1 + (questions.length || 1)) % (questions.length || 1));
   }, 300), [questions.length]);
 
+  const playAudio = async (type: 'question' | 'answer') => {
+    if (loadingAudio || !currentQuestion) return;
+  
+    if (currentAudio) {
+      currentAudio.pause();
+    }
+  
+    setLoadingAudio(type);
+  
+    let audioSrc = '';
+    const cacheKey = `${currentQuestion.id}`;
+  
+    if (audioCache.current[cacheKey]) {
+      audioSrc = type === 'question' ? audioCache.current[cacheKey].questionAudio : audioCache.current[cacheKey].answerAudio;
+    } else {
+      try {
+        const result = await generateVoiceLessons({
+          question: currentQuestion.question,
+          answer: currentQuestion.answer,
+        });
+        audioCache.current[cacheKey] = result;
+        audioSrc = type === 'question' ? result.questionAudio : result.answerAudio;
+      } catch (error) {
+        console.error("Error generating audio:", error);
+        setLoadingAudio(null);
+        return;
+      }
+    }
+  
+    const audio = new Audio(audioSrc);
+    setCurrentAudio(audio);
+    setLoadingAudio(null);
+  
+    return new Promise<void>((resolve) => {
+      audio.onended = () => {
+        setIsPlaying(false);
+        setCurrentAudio(null);
+        resolve();
+      };
+      audio.play();
+      setIsPlaying(true);
+    });
+  };
+
   const handleRepeat = useCallback(_.debounce(() => {
     playAudio('question');
-  }, 300), [currentQuestion]);
+  }, 300), [currentQuestion, playAudio]);
   
   useEffect(() => {
     if (transcript) {
@@ -97,61 +141,20 @@ export default function LearningPage() {
     setShowAnswer(false);
   }, [currentIndex, selectedCategory]);
 
-  const playAudio = async (type: 'question' | 'answer') => {
-    if (loadingAudio || !currentQuestion) return;
-
-    if (currentAudio) {
-      currentAudio.pause();
-    }
-
-    setLoadingAudio(type);
-
-    let audioSrc = '';
-    const cacheKey = `${currentQuestion.id}`;
-
-    if (audioCache.current[cacheKey]) {
-      audioSrc = type === 'question' ? audioCache.current[cacheKey].questionAudio : audioCache.current[cacheKey].answerAudio;
-    } else {
-      try {
-        const result = await generateVoiceLessons({
-          question: currentQuestion.question,
-          answer: currentQuestion.answer,
-        });
-        audioCache.current[cacheKey] = result;
-        audioSrc = type === 'question' ? result.questionAudio : result.answerAudio;
-      } catch (error) {
-        console.error("Error generating audio:", error);
-        setLoadingAudio(null);
-        return;
-      }
-    }
-    
-    const audio = new Audio(audioSrc);
-    setCurrentAudio(audio);
-    setLoadingAudio(null);
-    audio.play();
-    setIsPlaying(true);
-    audio.onended = () => {
-      if (type === 'question') {
-        setShowAnswer(true);
-        playAudio('answer');
-      } else {
-        setIsPlaying(false);
-      }
-    };
-  };
+  const playSequence = async () => {
+    await playAudio('question');
+    setShowAnswer(true);
+    await playAudio('answer');
+  }
 
   const handlePlayPause = () => {
-    if (currentAudio) {
-      if (isPlaying) {
-        currentAudio.pause();
-        setIsPlaying(false);
-      } else {
-        currentAudio.play();
-        setIsPlaying(true);
-      }
+    if (isPlaying) {
+        if(currentAudio) {
+            currentAudio.pause();
+            setIsPlaying(false);
+        }
     } else {
-        playAudio('question');
+       playSequence();
     }
   };
 
