@@ -1,5 +1,5 @@
 'use client';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardFooter, CardDescription } from '@/components/ui/card';
 import { Textarea } from '@/components/ui/textarea';
@@ -11,6 +11,7 @@ import { Loader2, CheckCircle, XCircle, Send, Repeat, Trophy, BookOpen, Graduati
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { cn } from '@/lib/utils';
 import { useSpeechRecognition } from '@/hooks/use-speech-recognition';
+import { useTTS } from '@/hooks/use-tts';
 
 type ExamState = 'mode_selection' | 'ongoing' | 'feedback' | 'finished';
 type ExamMode = 'learning' | 'exam';
@@ -26,23 +27,22 @@ export default function ExamPage() {
   const [examMode, setExamMode] = useState<ExamMode>('learning');
   const [score, setScore] = useState({ correct: 0, total: 0 });
   const [answerState, setAnswerState] = useState<AnswerState>('idle');
+  const [processingState, setProcessingState] = useState<'idle' | 'processing' | 'graded'>('idle');
 
   const { isListening, transcript, startListening, stopListening } = useSpeechRecognition();
+  const { speak } = useTTS();
 
   useEffect(() => {
     if (transcript) {
       setUserAnswer(transcript);
     }
   }, [transcript]);
-  
+
   useEffect(() => {
     if (isListening) {
       setAnswerState('listening');
-    } else if (answerState === 'listening') {
-      // If it was listening and now it's not, it's processing
-      setAnswerState('idle'); // revert to idle, wait for submit
     }
-  }, [isListening, answerState]);
+  }, [isListening]);
 
   useEffect(() => {
     const shuffled = [...allQuestions].sort(() => 0.5 - Math.random());
@@ -51,13 +51,21 @@ export default function ExamPage() {
     setScore(s => ({...s, total: selectedQuestions.length}))
   }, []);
 
+  const currentQuestion = examQuestions[currentQuestionIndex];
+
+  useEffect(() => {
+    if (examState === 'ongoing' && currentQuestion) {
+      speak(currentQuestion.question);
+    }
+  }, [examState, currentQuestion, speak]);
+
+
   const startExam = (mode: ExamMode) => {
     setExamMode(mode);
     setExamState('ongoing');
   };
 
   const totalQuestions = score.total;
-  const currentQuestion = examQuestions[currentQuestionIndex];
   const questionsAnswered = currentQuestionIndex;
 
 
@@ -70,32 +78,42 @@ export default function ExamPage() {
     stopListening();
     setExamState('feedback');
     setAnswerState('processing');
+    setProcessingState('processing');
     setFeedback(null); // Clear previous feedback
 
     let result;
-    if (examMode === 'learning') {
-       result = await adaptiveLearningFeedback({
-        question: currentQuestion.question,
-        userAnswer,
-        correctAnswer: currentQuestion.answer,
-      });
-    } else { // Exam mode
-       result = await aiProctoringExam({
-        question: currentQuestion.question,
-        userAnswer,
-        expectedAnswer: currentQuestion.answer,
-      });
-    }
-    
-    setFeedback(result);
-    setAnswerState(result.isCorrect ? 'correct' : 'incorrect');
-
-    if (result.isCorrect) {
-      setScore(s => ({ ...s, correct: s.correct + 1 }));
-    } else {
+    try {
       if (examMode === 'learning') {
-        setRetryQueue(q => [...q, currentQuestion]);
+        result = await adaptiveLearningFeedback({
+          question: currentQuestion.question,
+          userAnswer,
+          correctAnswer: currentQuestion.answer,
+        });
+      } else { // Exam mode
+        result = await aiProctoringExam({
+          question: currentQuestion.question,
+          userAnswer,
+          expectedAnswer: currentQuestion.answer,
+        });
       }
+      
+      setFeedback(result);
+      setAnswerState(result.isCorrect ? 'correct' : 'incorrect');
+      setProcessingState('graded');
+
+      if (result.isCorrect) {
+        setScore(s => ({ ...s, correct: s.correct + 1 }));
+        speak("Correct!");
+      } else {
+        speak("Incorrect. " + result.feedback);
+        if (examMode === 'learning') {
+          setRetryQueue(q => [...q, currentQuestion]);
+        }
+      }
+    } catch (error) {
+       console.error("Error processing answer:", error);
+       setAnswerState('idle');
+       setProcessingState('idle');
     }
   };
 
@@ -103,6 +121,7 @@ export default function ExamPage() {
     setFeedback(null);
     setUserAnswer('');
     setAnswerState('idle');
+    setProcessingState('idle');
     
     if (currentQuestionIndex < examQuestions.length - 1) {
       setCurrentQuestionIndex(i => i + 1);
@@ -123,20 +142,13 @@ export default function ExamPage() {
   const handleMicClick = () => {
     if (isListening) {
       stopListening();
+      setAnswerState('idle');
     } else {
       setUserAnswer(''); // Clear text when starting to listen
       startListening();
     }
   };
-
-  const answerStateClasses: Record<AnswerState, string> = {
-    idle: 'bg-secondary text-secondary-foreground',
-    listening: 'bg-green-500/20 text-green-400 animate-pulse',
-    processing: 'bg-yellow-500/20 text-yellow-400',
-    correct: 'bg-green-500/80 text-white',
-    incorrect: 'bg-red-500/80 text-white',
-  }
-
+  
   if (examState === 'mode_selection') {
     return (
       <div className="max-w-2xl mx-auto">
@@ -201,10 +213,14 @@ export default function ExamPage() {
           <CardTitle className="font-headline text-2xl">
               {examMode === 'learning' ? 'AI Learning Session' : 'AI-Proctored Exam'}
           </CardTitle>
-          <div className="flex items-center gap-4 pt-2">
-              <Progress value={(questionsAnswered / totalQuestions) * 100} className="flex-1"/>
-              <span className="text-sm text-muted-foreground">Question {currentQuestionIndex + 1} of {totalQuestions}</span>
+          <div className="flex items-center justify-between text-sm text-muted-foreground mb-2">
+            <span>Question {currentQuestionIndex + 1} of {totalQuestions}</span>
+            <span>Score: {score.correct}/{score.total}</span>
+            {examMode === 'learning' && retryQueue.length > 0 && (
+              <span>Retry: {retryQueue.length}</span>
+            )}
           </div>
+          <Progress value={(questionsAnswered / totalQuestions) * 100} className="w-full"/>
           </CardHeader>
           <CardContent className="space-y-4">
               <p className="text-lg font-semibold min-h-[6rem] flex items-center">{currentQuestion.question}</p>
@@ -213,7 +229,7 @@ export default function ExamPage() {
                       placeholder={isListening ? "Listening..." : "Speak or type your answer here..."}
                       value={userAnswer}
                       onChange={(e) => setUserAnswer(e.target.value)}
-                      disabled={examState === 'feedback'}
+                      disabled={examState === 'feedback' || processingState === 'processing'}
                       rows={5}
                       className="pr-12"
                   />
@@ -221,12 +237,32 @@ export default function ExamPage() {
                       size="icon"
                       variant="ghost"
                       onClick={handleMicClick}
-                      className={cn("absolute right-2 top-1/2 -translate-y-1/2 rounded-full h-9 w-9 transition-colors", answerStateClasses[answerState])}
+                      className={cn(
+                        "absolute right-2 top-1/2 -translate-y-1/2 rounded-full h-9 w-9 transition-colors", 
+                        answerState === 'listening' && "bg-green-500/20 text-green-400 animate-pulse",
+                        answerState === 'processing' && "bg-yellow-500/20 text-yellow-400",
+                        answerState === 'correct' && "bg-green-500/80 text-white",
+                        answerState === 'incorrect' && "bg-red-500/80 text-white",
+                        answerState === 'idle' && "bg-secondary text-secondary-foreground"
+                      )}
+                      disabled={processingState === 'processing'}
                   >
-                     {answerState === 'processing' ? <Loader2 className="h-5 w-5 animate-spin" /> : <Mic className="h-5 w-5"/>}
+                     {processingState === 'processing' ? (
+                        <Loader2 className="h-5 w-5 animate-spin" />
+                      ) : answerState === 'listening' ? (
+                        <div className="relative">
+                          <Mic className="h-5 w-5" />
+                          <span className="absolute -top-1 -right-1 flex h-3 w-3">
+                            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
+                            <span className="relative inline-flex rounded-full h-3 w-3 bg-green-500"></span>
+                          </span>
+                        </div>
+                      ) : (
+                        <Mic className="h-5 w-5" />
+                      )}
                   </Button>
               </div>
-              <Button onClick={handleSubmit} disabled={examState === 'feedback' || !userAnswer.trim() || isListening} className="w-full">
+              <Button onClick={handleSubmit} disabled={examState === 'feedback' || !userAnswer.trim() || isListening || processingState === 'processing'} className="w-full">
                   {answerState === 'processing' ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Send className="mr-2 h-4 w-4" />}
                   Submit Answer
               </Button>

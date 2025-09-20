@@ -1,7 +1,6 @@
 'use client';
 import { useState, useCallback, useEffect, useRef } from 'react';
 
-// Add a global type for SpeechRecognition
 declare global {
   interface Window {
     SpeechRecognition: any;
@@ -15,6 +14,8 @@ export const useSpeechRecognition = () => {
   const recognitionRef = useRef<any>(null);
 
   useEffect(() => {
+    if (recognitionRef.current) return;
+
     const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
     if (!SpeechRecognition) {
       console.warn('Speech Recognition API is not supported in this browser.');
