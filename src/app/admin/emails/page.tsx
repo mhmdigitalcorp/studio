@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import {
   Card,
   CardContent,
@@ -24,6 +24,7 @@ import {
   Save,
   Trash2,
   Edit,
+  Search,
 } from 'lucide-react';
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
@@ -51,6 +52,7 @@ import {
   DialogDescription
 } from '@/components/ui/dialog';
 import { campaigns as initialCampaigns, Campaign } from '@/lib/email-data';
+import { users as allUsers, User } from '@/lib/data';
 import { Badge } from '@/components/ui/badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import {
@@ -71,12 +73,22 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { format } from 'date-fns';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { ScrollArea } from '@/components/ui/scroll-area';
+import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar';
+import { Checkbox } from '@/components/ui/checkbox';
 
 type ViewMode = 'manager' | 'composer';
 
 const getInitialComposerState = () => ({
   id: null as string | null,
-  recipients: 'all',
+  recipients: 'all', // Now represents segment, or a summary for custom/manual
+  recipientSelection: {
+    type: 'segment' as 'segment' | 'custom' | 'manual',
+    segment: 'all',
+    custom: [] as string[],
+    manual: '',
+  },
   subject: '',
   body: '',
   sendNow: true,
@@ -91,6 +103,7 @@ export default function EmailsPage() {
   const [composerState, setComposerState] = useState(getInitialComposerState());
   const [isDeleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [campaignToDelete, setCampaignToDelete] = useState<Campaign | null>(null);
+  const [userSearchTerm, setUserSearchTerm] = useState('');
 
   const [aiFormState, setAiFormState] = useState<Omit<GenerateEmailCampaignInput, 'targetAudience'>>({
     emailType: 'newsletter',
@@ -100,11 +113,8 @@ export default function EmailsPage() {
   });
 
   useEffect(() => {
-    // This hook ensures that `new Date()` is only called on the client side,
-    // preventing hydration mismatches.
     setComposerState(prev => ({ ...prev, scheduledAt: new Date() }));
   }, []);
-
 
   const handleGenerateWithAi = async () => {
     setIsGenerating(true);
@@ -114,7 +124,6 @@ export default function EmailsPage() {
       setAiModalOpen(false);
     } catch (error) {
       console.error('Failed to generate email campaign:', error);
-      // You could show a toast notification here
     }
     setIsGenerating(false);
   };
@@ -125,7 +134,9 @@ export default function EmailsPage() {
   };
   
   const handleOpenEdit = (campaign: Campaign) => {
+    // This is a simplified edit; a real app would need to parse the recipient string
     setComposerState({
+      ...getInitialComposerState(),
       id: campaign.id,
       recipients: campaign.recipients,
       subject: campaign.subject,
@@ -149,23 +160,38 @@ export default function EmailsPage() {
     }
   };
 
+  const getRecipientSummary = () => {
+    const { type, segment, custom, manual } = composerState.recipientSelection;
+    switch (type) {
+      case 'custom':
+        return `${custom.length} custom user(s)`;
+      case 'manual':
+        const emailCount = manual.split(',').filter(e => e.trim()).length;
+        return `${emailCount} manual email(s)`;
+      case 'segment':
+      default:
+        return recipientLabels[segment] || segment;
+    }
+  };
+
   const handleSave = (status: 'Draft' | 'Scheduled' | 'Sent') => {
+    const recipientsSummary = getRecipientSummary();
     const campaignData = {
       subject: composerState.subject,
       body: composerState.body,
-      recipients: composerState.recipients,
+      recipients: recipientsSummary,
       status,
       date: status === 'Draft' ? 'N/A' : (composerState.sendNow ? new Date() : composerState.scheduledAt).toISOString(),
     };
 
-    if (composerState.id) { // Update existing
+    if (composerState.id) {
       setCampaigns(campaigns.map(c => c.id === composerState.id ? { ...c, ...campaignData } : c));
-    } else { // Create new
+    } else {
       const newCampaign: Campaign = {
         id: `camp_${Date.now()}`,
         ...campaignData,
       };
-      setCampaigns([...campaigns, newCampaign]);
+      setCampaigns([newCampaign, ...campaigns]);
     }
     setView('manager');
   };
@@ -175,7 +201,30 @@ export default function EmailsPage() {
     "not-started": "Users who haven't started",
     "completed-exam": "Users with completed exams",
     "score-gt-80": "High-scoring users (>80%)",
-  }
+  };
+
+  const filteredUsers = useMemo(() => {
+    return allUsers.filter(user => 
+      user.name.toLowerCase().includes(userSearchTerm.toLowerCase()) ||
+      user.email.toLowerCase().includes(userSearchTerm.toLowerCase())
+    );
+  }, [userSearchTerm]);
+
+  const handleCustomUserSelect = (userId: string) => {
+    setComposerState(prev => {
+      const currentSelection = prev.recipientSelection.custom;
+      const newSelection = currentSelection.includes(userId)
+        ? currentSelection.filter(id => id !== userId)
+        : [...currentSelection, userId];
+      return {
+        ...prev,
+        recipientSelection: {
+          ...prev.recipientSelection,
+          custom: newSelection,
+        }
+      };
+    });
+  };
 
   const CampaignManagerView = () => (
     <Card>
@@ -219,7 +268,7 @@ export default function EmailsPage() {
                     {campaign.status}
                   </Badge>
                 </TableCell>
-                <TableCell>{recipientLabels[campaign.recipients] || campaign.recipients}</TableCell>
+                <TableCell>{campaign.recipients}</TableCell>
                 <TableCell>{campaign.date === 'N/A' ? 'N/A' : format(new Date(campaign.date), "PPP p")}</TableCell>
                 <TableCell className="text-right">
                    <DropdownMenu>
@@ -268,17 +317,69 @@ export default function EmailsPage() {
           <CardDescription>Choose who this email will be sent to.</CardDescription>
         </CardHeader>
         <CardContent>
-          <Select value={composerState.recipients} onValueChange={value => setComposerState(prev => ({...prev, recipients: value}))}>
-            <SelectTrigger>
-              <SelectValue placeholder="Select a user segment" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All Users</SelectItem>
-              <SelectItem value="not-started">Users who haven't started learning</SelectItem>
-              <SelectItem value="completed-exam">Users with completed exams</SelectItem>
-              <SelectItem value="score-gt-80">Users with exam score > 80%</SelectItem>
-            </SelectContent>
-          </Select>
+          <Tabs 
+            value={composerState.recipientSelection.type}
+            onValueChange={(value) => setComposerState(prev => ({ ...prev, recipientSelection: { ...prev.recipientSelection, type: value as any }}))}
+          >
+            <TabsList className="grid w-full grid-cols-3">
+              <TabsTrigger value="segment">Segments</TabsTrigger>
+              <TabsTrigger value="custom">Custom List</TabsTrigger>
+              <TabsTrigger value="manual">Manual Entry</TabsTrigger>
+            </TabsList>
+            <TabsContent value="segment" className="pt-4">
+              <Select 
+                value={composerState.recipientSelection.segment} 
+                onValueChange={value => setComposerState(prev => ({...prev, recipientSelection: { ...prev.recipientSelection, segment: value }}))}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Select a user segment" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Users</SelectItem>
+                  <SelectItem value="not-started">Users who haven't started learning</SelectItem>
+                  <SelectItem value="completed-exam">Users with completed exams</SelectItem>
+                  <SelectItem value="score-gt-80">Users with exam score > 80%</SelectItem>
+                </SelectContent>
+              </Select>
+            </TabsContent>
+            <TabsContent value="custom" className="pt-4 space-y-4">
+              <div className="relative">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                <Input placeholder="Search users..." className="pl-10" value={userSearchTerm} onChange={e => setUserSearchTerm(e.target.value)} />
+              </div>
+              <ScrollArea className="h-64 rounded-md border">
+                <div className="p-4">
+                  {filteredUsers.map(user => (
+                    <div key={user.id} className="flex items-center gap-3 p-2 rounded-md hover:bg-secondary">
+                      <Checkbox id={`user-${user.id}`} checked={composerState.recipientSelection.custom.includes(user.id)} onCheckedChange={() => handleCustomUserSelect(user.id)} />
+                      <Label htmlFor={`user-${user.id}`} className="flex-1 flex items-center gap-2 cursor-pointer">
+                        <Avatar className="h-8 w-8">
+                          <AvatarImage src={user.avatar} />
+                          <AvatarFallback>{user.name.charAt(0)}</AvatarFallback>
+                        </Avatar>
+                        <div>
+                          <div className="font-medium">{user.name}</div>
+                          <div className="text-xs text-muted-foreground">{user.email}</div>
+                        </div>
+                      </Label>
+                    </div>
+                  ))}
+                </div>
+              </ScrollArea>
+              <p className="text-sm text-muted-foreground">{composerState.recipientSelection.custom.length} user(s) selected.</p>
+            </TabsContent>
+            <TabsContent value="manual" className="pt-4">
+              <Label htmlFor="manual-emails">Manual Email Entry</Label>
+              <Textarea 
+                id="manual-emails" 
+                placeholder="Enter email addresses, separated by commas"
+                rows={8}
+                value={composerState.recipientSelection.manual}
+                onChange={e => setComposerState(prev => ({ ...prev, recipientSelection: { ...prev.recipientSelection, manual: e.target.value }}))}
+              />
+              <p className="text-sm text-muted-foreground mt-2">Emails should be comma-separated.</p>
+            </TabsContent>
+          </Tabs>
         </CardContent>
       </Card>
 
@@ -384,7 +485,7 @@ export default function EmailsPage() {
             </div>
              <div className="grid gap-2">
               <Label>Additional Instructions</Label>
-              <Textarea placeholder="e.g., Keep it concise, under 150 words." value={aiFormState.additionalInstructions} onChange={e => setAiFormState(prev => ({...prev, additionalInstructions: e.target.value}))}/>
+              <Textarea placeholder="e.g., Keep it concise, under 150 words." value={aiFormState.additionalInstructions} onChange={e => setAiFormState(prev => ({...prev, additionalInstructions: e.targe.value}))}/>
             </div>
           </div>
           <DialogFooter>
