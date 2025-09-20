@@ -26,7 +26,7 @@ export async function sendEmail(options: EmailOptions) {
 
   if (config.provider === 'smtp') {
     if (!config.smtpHost || !config.smtpPort || !config.smtpUser || !config.smtpPass) {
-      throw new Error('SMTP configuration is incomplete.');
+      throw new Error('SMTP configuration is incomplete. Please check your settings.');
     }
     transporter = nodemailer.createTransport({
       host: config.smtpHost,
