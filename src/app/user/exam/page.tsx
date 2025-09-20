@@ -37,6 +37,7 @@ import { useSpeechRecognition } from '@/hooks/use-speech-recognition';
 import { useTTS } from '@/hooks/use-tts';
 import { manageQuestion } from '@/ai/flows/manage-question';
 import { useToast } from '@/hooks/use-toast';
+import _ from 'lodash';
 
 type ExamState = 'category_selection' | 'mode_selection' | 'ongoing' | 'finished';
 type InteractionState =
@@ -127,7 +128,16 @@ export default function ExamPage() {
   const { isListening, transcript, startListening, stopListening, browserSupportsSpeechRecognition, micPermission } = useSpeechRecognition();
   const { speak, isSpeaking } = useTTS();
   const currentQuestion = examQuestions[currentQuestionIndex];
+  const wasListening = useRef(false);
 
+  // Debounced submission function
+  const debouncedSubmit = useCallback(_.debounce((answer) => {
+    // Only submit if we are in a listening state and have a valid answer
+    if ((interactionState === 'listening' || interactionState === 'retake_prompt') && answer.trim()) {
+      handleSubmit();
+    }
+  }, 1500), [interactionState]);
+  
   useEffect(() => {
     async function loadData() {
       setIsLoading(true);
@@ -138,18 +148,31 @@ export default function ExamPage() {
     loadData();
   }, []);
 
+  // Effect to handle automatic submission
   useEffect(() => {
     if (transcript) {
       setUserAnswer(transcript);
+    }
+
+    // If we were listening, but now we are not, it means the user stopped talking.
+    if (wasListening.current && !isListening && transcript.trim()) {
+      // If it's a retake prompt, we check for "yes" immediately without debounce.
       if (interactionState === 'retake_prompt') {
         const confirmation = transcript.toLowerCase();
         if (confirmation.includes('yes') || confirmation.includes('okay')) {
-          stopListening();
+          debouncedSubmit.cancel(); // Cancel any pending submission
           handleRetryQuestion();
         }
+      } else {
+        // For regular answers, use the debounced submission.
+        debouncedSubmit(transcript);
       }
     }
-  }, [transcript, interactionState]);
+
+    // Update the ref to track the listening state for the next render.
+    wasListening.current = isListening;
+  }, [transcript, isListening, interactionState, debouncedSubmit]);
+
 
   const handleQuestionSequence = useCallback(async () => {
     if (!currentQuestion) return;
@@ -183,7 +206,11 @@ export default function ExamPage() {
   };
 
   const handleSubmit = async () => {
+    // Cancel any pending debounced calls since we are now submitting.
+    debouncedSubmit.cancel();
+
     if (!userAnswer.trim() || (interactionState !== 'listening' && interactionState !== 'retake_prompt')) return;
+    
     stopListening();
     setInteractionState('processing');
     setFeedback(null);
@@ -236,8 +263,12 @@ export default function ExamPage() {
   };
 
   const handleMicClick = () => {
-    if (isListening) stopListening();
-    else {
+    if (isListening) {
+       stopListening();
+       if (userAnswer.trim()) {
+         handleSubmit(); // Manually trigger submit if mic is stopped and there is an answer
+       }
+    } else {
       if ((interactionState === 'listening' || interactionState === 'retake_prompt') && micPermission === 'granted') {
         startListening();
       }
@@ -368,7 +399,11 @@ export default function ExamPage() {
             <Textarea
               placeholder={stateConfig[interactionState].prompt}
               value={userAnswer}
-              onChange={(e) => setUserAnswer(e.target.value)}
+              onChange={(e) => {
+                setUserAnswer(e.target.value);
+                // If user types, we should cancel automatic voice submission
+                debouncedSubmit.cancel();
+              }}
               disabled={interactionState !== 'listening' && interactionState !== 'retake_prompt'}
               rows={5}
               className={cn("pr-20 transition-all duration-300 border-2", stateConfig[interactionState].borderColor)}
