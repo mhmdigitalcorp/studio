@@ -368,7 +368,7 @@ export default function TodosPage() {
                   <p className="text-sm text-muted-foreground">Was due yesterday</p>
                 </div>
               </div>
-              <Separator />
+              <Separator className="my-4" />
                <div className="flex items-start gap-3">
                 <BadgeCheck className="h-5 w-5 text-green-400 mt-1" />
                 <div>
