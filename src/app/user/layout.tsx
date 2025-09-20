@@ -31,12 +31,21 @@ export default function UserLayout({
   const { currentUser, loading } = useAuth();
   const router = useRouter();
 
+  const isAuthPage = pathname.startsWith('/user/auth');
+
   useEffect(() => {
-    if (!loading && !currentUser) {
+    // If we're not on an auth page, and the user is not logged in, redirect them.
+    if (!loading && !currentUser && !isAuthPage) {
       router.push('/user/auth/login');
     }
-  }, [currentUser, loading, router]);
+  }, [currentUser, loading, router, isAuthPage]);
   
+  // If it's an auth page, just render the children without the layout shell
+  if (isAuthPage) {
+    return <>{children}</>;
+  }
+  
+  // For protected pages, show a loader while checking auth state.
   if (loading || !currentUser) {
     return (
       <div className="flex h-screen w-full items-center justify-center">
