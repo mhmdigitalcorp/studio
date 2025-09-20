@@ -43,25 +43,27 @@ export default function UserProfilePage() {
   const [name, setName] = useState('');
   const [phone, setPhone] = useState('');
   const [isSaving, setIsSaving] = useState(false);
-  const [isRefreshing, setIsRefreshing] = useState(true);
+  const [isLoadingProfile, setIsLoadingProfile] = useState(true);
 
-  // Fetch fresh user data when the page loads
-  const loadProfile = useCallback(async () => {
-    setIsRefreshing(true);
-    await refreshUser();
-    setIsRefreshing(false);
-  }, [refreshUser]);
-
+  // Load user data efficiently
   useEffect(() => {
-    loadProfile();
-  }, [loadProfile]);
+    const loadUserData = async () => {
+      if (!currentUser && !authLoading) {
+        // If no user is loaded, try to refresh
+        await refreshUser();
+      }
+      
+      // Now set the form data regardless of whether we just refreshed or had existing data
+      if (currentUser) {
+        setName(currentUser.name || '');
+        setPhone(currentUser.phone || '');
+      }
+      
+      setIsLoadingProfile(false);
+    };
 
-  useEffect(() => {
-    if (currentUser) {
-      setName(currentUser.name || '');
-      setPhone(currentUser.phone || '');
-    }
-  }, [currentUser]);
+    loadUserData();
+  }, [currentUser, authLoading, refreshUser]); 
   
   const getInitials = (name: string | null) => {
     if (!name) return 'U';
@@ -77,17 +79,21 @@ export default function UserProfilePage() {
       userId: currentUser.uid,
       userData: { name, phone },
     });
-    setIsSaving(false);
-
+    
     if (result.success) {
       toast({ title: 'Profile Updated', description: 'Your information has been saved.' });
+      // Optional: refresh user data after update
       await refreshUser();
     } else {
       toast({ title: 'Update Failed', description: result.message, variant: 'destructive' });
     }
+    setIsSaving(false);
   };
 
-  if (authLoading || isRefreshing) {
+  // Combine loading states
+  const isLoading = authLoading || isLoadingProfile;
+  
+  if (isLoading) {
     return (
       <div className="flex justify-center items-center h-64">
         <Loader2 className="h-8 w-8 animate-spin" />
