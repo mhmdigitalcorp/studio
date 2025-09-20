@@ -41,11 +41,13 @@ export async function sendEmail(options: EmailOptions) {
      if (!config.sendgridKey) {
        throw new Error('SendGrid API key is missing.');
      }
+    // Correctly configure nodemailer for SendGrid
     transporter = nodemailer.createTransport({
         host: 'smtp.sendgrid.net',
-        port: 587,
+        port: 587, // Use 587 for TLS or 465 for SSL
+        secure: false, // Use 'true' if you use port 465
         auth: {
-            user: 'apikey',
+            user: 'apikey', // This is a literal string for SendGrid
             pass: config.sendgridKey
         }
     });
