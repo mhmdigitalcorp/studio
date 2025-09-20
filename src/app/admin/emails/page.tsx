@@ -88,7 +88,6 @@ type ServiceStatus = 'operational' | 'degraded' | 'not-configured';
 
 const getInitialComposerState = () => ({
   id: null as string | null,
-  recipients: 'all', // Now represents segment, or a summary for custom/manual
   recipientSelection: {
     type: 'segment' as 'segment' | 'custom' | 'manual',
     segment: 'all',
@@ -131,13 +130,15 @@ export default function EmailsPage() {
   });
 
   useEffect(() => {
+    // Wrapped in useEffect to prevent hydration errors for dates.
     setComposerState(prev => ({ ...prev, scheduledAt: new Date() }));
   }, []);
 
   const handleGenerateWithAi = async () => {
     setIsGenerating(true);
     try {
-      const result = await generateEmailCampaign({ ...aiFormState, emailType: aiFormState.emailType, targetAudience: composerState.recipients });
+      const targetAudience = getRecipientSummary();
+      const result = await generateEmailCampaign({ ...aiFormState, targetAudience });
       setComposerState(prev => ({ ...prev, subject: result.subject, body: result.body }));
       setAiModalOpen(false);
     } catch (error) {
@@ -153,10 +154,10 @@ export default function EmailsPage() {
   
   const handleOpenEdit = (campaign: Campaign) => {
     // This is a simplified edit; a real app would need to parse the recipient string
+    // and map it back to the selection UI state.
     setComposerState({
       ...getInitialComposerState(),
       id: campaign.id,
-      recipients: campaign.recipients,
       subject: campaign.subject,
       body: campaign.body,
       sendNow: campaign.status !== 'Scheduled',
