@@ -1,5 +1,5 @@
 'use client';
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardFooter, CardDescription } from '@/components/ui/card';
 import { Textarea } from '@/components/ui/textarea';
@@ -7,11 +7,10 @@ import { Progress } from '@/components/ui/progress';
 import { questions as allQuestions, Question } from '@/lib/data';
 import { adaptiveLearningFeedback, AdaptiveLearningFeedbackOutput } from '@/ai/flows/adaptive-learning-feedback';
 import { aiProctoringExam } from '@/ai/flows/ai-proctoring-exam';
-import { Loader2, CheckCircle, XCircle, Send, Repeat, Trophy, BookOpen, GraduationCap, Mic, Video } from 'lucide-react';
+import { Loader2, CheckCircle, XCircle, Send, Repeat, Trophy, BookOpen, GraduationCap, Mic } from 'lucide-react';
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { cn } from '@/lib/utils';
 import { useSpeechRecognition } from '@/hooks/use-speech-recognition';
-import { useToast } from '@/hooks/use-toast';
 
 type ExamState = 'mode_selection' | 'ongoing' | 'feedback' | 'finished';
 type ExamMode = 'learning' | 'exam';
@@ -29,10 +28,6 @@ export default function ExamPage() {
   const [answerState, setAnswerState] = useState<AnswerState>('idle');
 
   const { listening, transcript, startListening, stopListening } = useSpeechRecognition();
-  const { toast } = useToast();
-
-  const videoRef = useRef<HTMLVideoElement>(null);
-  const [hasCameraPermission, setHasCameraPermission] = useState<boolean | null>(null);
 
   useEffect(() => {
     if (transcript) {
@@ -48,35 +43,8 @@ export default function ExamPage() {
       setAnswerState('processing');
       handleSubmit();
     }
-  }, [listening]);
+  }, [listening, answerState]); // Added answerState to dependency array
 
-  useEffect(() => {
-    const getCameraPermission = async () => {
-      if (examMode !== 'exam') return;
-      try {
-        const stream = await navigator.mediaDevices.getUserMedia({video: true});
-        setHasCameraPermission(true);
-
-        if (videoRef.current) {
-          videoRef.current.srcObject = stream;
-        }
-      } catch (error) {
-        console.error('Error accessing camera:', error);
-        setHasCameraPermission(false);
-        toast({
-          variant: 'destructive',
-          title: 'Camera Access Denied',
-          description: 'Please enable camera permissions in your browser settings for proctoring.',
-        });
-      }
-    };
-
-    if (examState === 'ongoing') {
-      getCameraPermission();
-    }
-  }, [examState, examMode, toast]);
-
-  
   useEffect(() => {
     const shuffled = [...allQuestions].sort(() => 0.5 - Math.random());
     const selectedQuestions = shuffled.slice(0, 5);
@@ -89,8 +57,8 @@ export default function ExamPage() {
     setExamState('ongoing');
   };
 
-  const currentQuestion = examQuestions[currentQuestionIndex];
   const totalQuestions = score.total;
+  const currentQuestion = examQuestions[currentQuestionIndex];
   const questionsAnswered = currentQuestionIndex;
 
 
@@ -144,6 +112,7 @@ export default function ExamPage() {
         setExamQuestions([...retryQueue]);
         setRetryQueue([]);
         setCurrentQuestionIndex(0);
+        setScore(s => ({...s, total: retryQueue.length}));
         setExamState('ongoing');
       } else {
         setExamState('finished');
@@ -186,7 +155,7 @@ export default function ExamPage() {
             <Card className="p-4 flex flex-col items-center text-center">
               <GraduationCap className="h-12 w-12 text-primary mb-4"/>
               <h3 className="font-semibold text-lg">Exam Mode</h3>
-              <p className="text-sm text-muted-foreground mt-2">A formal test of your knowledge with AI proctoring. Answers graded for intent.</p>
+              <p className="text-sm text-muted-foreground mt-2">A formal test of your knowledge. Answers graded for intent.</p>
               <Button className="mt-4 w-full" onClick={() => startExam('exam')}>Start Exam</Button>
             </Card>
           </CardContent>
@@ -226,83 +195,55 @@ export default function ExamPage() {
   }
 
   return (
-    <div className="grid lg:grid-cols-3 gap-8">
-      <div className="lg:col-span-2">
-        <Card>
-            <CardHeader>
-            <CardTitle className="font-headline text-2xl">
-                {examMode === 'learning' ? 'AI Learning Session' : 'AI-Proctored Exam'}
-            </CardTitle>
-            <div className="flex items-center gap-4 pt-2">
-                <Progress value={(questionsAnswered / totalQuestions) * 100} className="flex-1"/>
-                <span className="text-sm text-muted-foreground">Question {currentQuestionIndex + 1} of {totalQuestions}</span>
-            </div>
-            </CardHeader>
-            <CardContent className="space-y-4">
-                <p className="text-lg font-semibold min-h-[6rem] flex items-center">{currentQuestion.question}</p>
-                <div className="relative">
-                    <Textarea
-                        placeholder={listening ? "Listening..." : "Speak or type your answer here..."}
-                        value={userAnswer}
-                        onChange={(e) => setUserAnswer(e.target.value)}
-                        disabled={examState === 'feedback'}
-                        rows={5}
-                        className="pr-12"
-                    />
-                    <Button
-                        size="icon"
-                        variant="ghost"
-                        onClick={handleMicClick}
-                        className={cn("absolute right-2 top-1/2 -translate-y-1/2 rounded-full h-9 w-9 transition-colors", answerStateClasses[answerState])}
-                    >
-                       {answerState === 'processing' ? <Loader2 className="h-5 w-5 animate-spin" /> : <Mic className="h-5 w-5"/>}
-                    </Button>
-                </div>
-                <Button onClick={handleSubmit} disabled={examState === 'feedback' || !userAnswer.trim() || listening} className="w-full">
-                    {answerState === 'processing' ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Send className="mr-2 h-4 w-4" />}
-                    Submit Answer
-                </Button>
-            </CardContent>
-        </Card>
-        
-        {examState === 'feedback' && feedback && (
-            <Card className="mt-4">
-                <CardContent className="p-4">
-                    <Alert variant={feedback.isCorrect ? "default" : "destructive"} className={cn(feedback.isCorrect && "border-green-500/50 text-green-500")}>
-                        {feedback.isCorrect ? <CheckCircle className="h-4 w-4" /> : <XCircle className="h-4 w-4" />}
-                        <AlertTitle>{feedback.isCorrect ? "Correct!" : "Needs Improvement"}</AlertTitle>
-                        <AlertDescription>{feedback.feedback}</AlertDescription>
-                    </Alert>
-                    <Button onClick={handleNextQuestion} className="w-full mt-4">Continue</Button>
-                </CardContent>
-            </Card>
-        )}
-      </div>
-
-      {examMode === 'exam' && (
-        <div className="lg:col-span-1">
-          <Card>
-            <CardHeader>
-              <CardTitle className="font-headline flex items-center gap-2 text-lg">
-                <Video /> Proctoring
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="aspect-video w-full bg-secondary rounded-md flex items-center justify-center">
-                  <video ref={videoRef} className="w-full aspect-video rounded-md" autoPlay muted />
+    <div className="max-w-3xl mx-auto">
+      <Card>
+          <CardHeader>
+          <CardTitle className="font-headline text-2xl">
+              {examMode === 'learning' ? 'AI Learning Session' : 'AI-Proctored Exam'}
+          </CardTitle>
+          <div className="flex items-center gap-4 pt-2">
+              <Progress value={(questionsAnswered / totalQuestions) * 100} className="flex-1"/>
+              <span className="text-sm text-muted-foreground">Question {currentQuestionIndex + 1} of {totalQuestions}</span>
+          </div>
+          </CardHeader>
+          <CardContent className="space-y-4">
+              <p className="text-lg font-semibold min-h-[6rem] flex items-center">{currentQuestion.question}</p>
+              <div className="relative">
+                  <Textarea
+                      placeholder={listening ? "Listening..." : "Speak or type your answer here..."}
+                      value={userAnswer}
+                      onChange={(e) => setUserAnswer(e.target.value)}
+                      disabled={examState === 'feedback'}
+                      rows={5}
+                      className="pr-12"
+                  />
+                  <Button
+                      size="icon"
+                      variant="ghost"
+                      onClick={handleMicClick}
+                      className={cn("absolute right-2 top-1/2 -translate-y-1/2 rounded-full h-9 w-9 transition-colors", answerStateClasses[answerState])}
+                  >
+                     {answerState === 'processing' ? <Loader2 className="h-5 w-5 animate-spin" /> : <Mic className="h-5 w-5"/>}
+                  </Button>
               </div>
-              {hasCameraPermission === false && (
-                <Alert variant="destructive">
-                  <AlertTitle>Camera Access Required</AlertTitle>
-                  <AlertDescription>
-                    Please allow camera access for exam proctoring.
-                  </AlertDescription>
-                </Alert>
-              )}
-               <p className="text-xs text-muted-foreground text-center">Your video is for AI proctoring and is not stored.</p>
-            </CardContent>
+              <Button onClick={handleSubmit} disabled={examState === 'feedback' || !userAnswer.trim() || listening} className="w-full">
+                  {answerState === 'processing' ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Send className="mr-2 h-4 w-4" />}
+                  Submit Answer
+              </Button>
+          </CardContent>
+      </Card>
+      
+      {examState === 'feedback' && feedback && (
+          <Card className="mt-4">
+              <CardContent className="p-4">
+                  <Alert variant={feedback.isCorrect ? "default" : "destructive"} className={cn(feedback.isCorrect && "border-green-500/50 text-green-500")}>
+                      {feedback.isCorrect ? <CheckCircle className="h-4 w-4" /> : <XCircle className="h-4 w-4" />}
+                      <AlertTitle>{feedback.isCorrect ? "Correct!" : "Needs Improvement"}</AlertTitle>
+                      <AlertDescription>{feedback.feedback}</AlertDescription>
+                  </Alert>
+                  <Button onClick={handleNextQuestion} className="w-full mt-4">Continue</Button>
+              </CardContent>
           </Card>
-        </div>
       )}
     </div>
   );
