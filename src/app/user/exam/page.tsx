@@ -81,13 +81,9 @@ export default function ExamPage() {
       hasQuestionBeenSpoken.current = true;
       speak(currentQuestion.question).catch(error => {
         console.error("TTS Error:", error);
-        // Fallback to manual microphone start if TTS fails
-        if (!isListening) {
-          startListening();
-        }
       });
     }
-  }, [examState, currentQuestion, speak, isListening, startListening]);
+  }, [examState, currentQuestion, speak]);
 
   // Effect for starting listening after question is spoken
   useEffect(() => {
@@ -97,7 +93,7 @@ export default function ExamPage() {
         if (!isListening) {
           startListening();
         }
-      }, 1200); // Increased delay to ensure TTS has time to start
+      }, 1500); // Increased delay to ensure TTS has time to start
       
       return () => clearTimeout(timer);
     }

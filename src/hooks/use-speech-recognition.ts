@@ -12,6 +12,7 @@ export const useSpeechRecognition = () => {
   const [transcript, setTranscript] = useState('');
   const [isListening, setIsListening] = useState(false);
   const recognitionRef = useRef<any>(null);
+  const isStartingRef = useRef(false); // Track if we're in the process of starting
 
   useEffect(() => {
     if (recognitionRef.current) return;
@@ -48,14 +49,17 @@ export const useSpeechRecognition = () => {
       // We can ignore it to avoid cluttering the console.
       if (event.error === 'no-speech') {
         setIsListening(false);
+        isStartingRef.current = false;
         return;
       }
       console.error('Speech recognition error', event.error);
       setIsListening(false);
+      isStartingRef.current = false;
     };
       
     recognition.onend = () => {
       setIsListening(false);
+      isStartingRef.current = false;
     };
 
     recognitionRef.current = recognition;
@@ -63,22 +67,34 @@ export const useSpeechRecognition = () => {
     return () => {
       if (recognitionRef.current) {
         recognitionRef.current.stop();
+        recognitionRef.current = null;
       }
     };
   }, []);
 
   const startListening = useCallback(() => {
-    if (recognitionRef.current && !isListening) {
+    if (recognitionRef.current && !isListening && !isStartingRef.current) {
+      isStartingRef.current = true;
       setTranscript('');
-      recognitionRef.current.start();
-      setIsListening(true);
+      try {
+        recognitionRef.current.start();
+        setIsListening(true);
+      } catch (error) {
+        console.error('Error starting speech recognition:', error);
+        isStartingRef.current = false;
+      }
     }
   }, [isListening]);
 
   const stopListening = useCallback(() => {
-    if (recognitionRef.current && isListening) {
-      recognitionRef.current.stop();
+    if (recognitionRef.current && (isListening || isStartingRef.current)) {
+      try {
+        recognitionRef.current.stop();
+      } catch (error) {
+        console.error('Error stopping speech recognition:', error);
+      }
       setIsListening(false);
+      isStartingRef.current = false;
     }
   }, [isListening]);
 
