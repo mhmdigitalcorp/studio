@@ -16,8 +16,6 @@ import { ai } from '@/ai/genkit';
 import { z } from 'zod';
 import { User, Question } from '@/lib/data';
 import { db } from '@/lib/firebase-admin'; // Using admin SDK
-import { collection, writeBatch, getDocs, doc } from 'firebase/firestore';
-
 
 const BulkUploadInputSchema = z.object({
   dataType: z.enum(['users', 'questions']),
@@ -53,9 +51,9 @@ const bulkUploadFlow = ai.defineFlow(
       }
       
       const headers = lines[0].split(',').map(h => h.trim().toLowerCase().replace(/"/g, ''));
-      const batch = writeBatch(db);
+      const batch = db.batch();
       const collectionName = dataType; // 'users' or 'questions'
-      const collectionRef = collection(db, collectionName);
+      const collectionRef = db.collection(collectionName);
       let itemsAdded = 0;
 
       for (const line of lines.slice(1)) {
@@ -66,15 +64,14 @@ const bulkUploadFlow = ai.defineFlow(
         });
 
         // Use a provided ID or generate a new one
-        const docId = itemObj.id || doc(collectionRef).id;
-        const docRef = doc(db, collectionName, docId);
+        const docRef = itemObj.id ? collectionRef.doc(itemObj.id) : collectionRef.doc();
         
         if (dataType === 'users') {
           const user: Omit<User, 'id'> = {
             name: itemObj.name,
             email: itemObj.email,
             phone: itemObj.phone || '',
-            avatar: itemObj.avatar || `https://i.pravatar.cc/150?u=${docId}`,
+            avatar: itemObj.avatar || `https://i.pravatar.cc/150?u=${docRef.id}`,
             status: (itemObj.status as 'Active' | 'Inactive') || 'Active',
             lastLogin: itemObj.lastlogin || new Date().toISOString().split('T')[0],
             score: itemObj.score ? parseInt(itemObj.score) : 0,
@@ -97,7 +94,7 @@ const bulkUploadFlow = ai.defineFlow(
       await batch.commit();
 
       // Fetch the updated collection to return to the client
-      const snapshot = await getDocs(collectionRef);
+      const snapshot = await collectionRef.get();
       const updatedData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
 
       return {

@@ -6,7 +6,7 @@
  *
  * This flow acts as the single point of entry for user management, ensuring
  * that all user data modifications are handled securely and consistently on the server.
- * It interacts directly with Firestore.
+ * It interacts directly with Firestore using the Admin SDK.
  *
  * - manageUser - The main function to handle user data operations.
  * - ManageUserInput - The input type for the manageUser function.
