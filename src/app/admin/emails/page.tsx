@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useMemo } from 'react';
 import {
   Card,
   CardContent,
@@ -82,6 +82,8 @@ import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar';
 import { Checkbox } from '@/components/ui/checkbox';
 import { cn } from '@/lib/utils';
 import Link from 'next/link';
+import { useToast } from '@/hooks/use-toast';
+
 
 type ViewMode = 'manager' | 'composer';
 type ServiceStatus = 'operational' | 'degraded' | 'not-configured';
@@ -111,11 +113,13 @@ export default function EmailsPage() {
   const [view, setView] = useState<ViewMode>('manager');
   const [campaigns, setCampaigns] = useState<Campaign[]>(initialCampaigns);
   const [isGenerating, setIsGenerating] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
   const [isAiModalOpen, setAiModalOpen] = useState(false);
   const [composerState, setComposerState] = useState(getInitialComposerState());
   const [isDeleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [campaignToDelete, setCampaignToDelete] = useState<Campaign | null>(null);
   const [userSearchTerm, setUserSearchTerm] = useState('');
+  const { toast } = useToast();
   
   // NOTE: In a real app, this status would come from a shared context or backend call.
   // For this demo, we are simulating it with local state.
@@ -129,11 +133,6 @@ export default function EmailsPage() {
     additionalInstructions: '',
   });
 
-  useEffect(() => {
-    // Wrapped in useEffect to prevent hydration errors for dates.
-    setComposerState(prev => ({ ...prev, scheduledAt: new Date() }));
-  }, []);
-
   const handleGenerateWithAi = async () => {
     setIsGenerating(true);
     try {
@@ -143,6 +142,11 @@ export default function EmailsPage() {
       setAiModalOpen(false);
     } catch (error) {
       console.error('Failed to generate email campaign:', error);
+       toast({
+        title: 'Generation Failed',
+        description: 'Could not generate email content with AI.',
+        variant: 'destructive',
+      });
     }
     setIsGenerating(false);
   };
@@ -181,19 +185,62 @@ export default function EmailsPage() {
 
   const getRecipientSummary = () => {
     const { type, segment, custom, manual } = composerState.recipientSelection;
+    let count = 0;
     switch (type) {
       case 'custom':
-        return `${custom.length} custom user(s)`;
+        count = custom.length;
+        return `${count} custom user(s)`;
       case 'manual':
-        const emailCount = manual.split(',').filter(e => e.trim()).length;
-        return `${emailCount} manual email(s)`;
+        count = manual.split(',').filter(e => e.trim()).length;
+        return `${count} manual email(s)`;
       case 'segment':
       default:
+        // In a real app, you'd calculate segment size. Here we'll estimate.
+        count = allUsers.length;
         return recipientLabels[segment] || segment;
     }
   };
 
-  const handleSave = (status: 'Draft' | 'Scheduled' | 'Sent') => {
+  const getRecipientCount = () => {
+    const { type, segment, custom, manual } = composerState.recipientSelection;
+     switch (type) {
+      case 'custom':
+        return custom.length;
+      case 'manual':
+        return manual.split(',').filter(e => e.trim()).length;
+      case 'segment':
+        // A real app would have logic to calculate this.
+        return allUsers.length;
+      default:
+        return 0;
+    }
+  };
+
+  const handleSave = async (status: 'Draft' | 'Scheduled' | 'Sent') => {
+    setIsSaving(true);
+
+    if (status === 'Sent') {
+      // Simulate sending email
+      await new Promise(resolve => setTimeout(resolve, 1500)); 
+      
+      // Simulate success/failure
+      const isSuccess = Math.random() > 0.1; // 90% success rate
+      if (isSuccess) {
+        toast({
+          title: "Email Sent Successfully!",
+          description: `Your campaign "${composerState.subject}" was sent to ${getRecipientCount()} recipient(s).`,
+        });
+      } else {
+        toast({
+          title: "Email Send Failed",
+          description: "Could not send the email. Please check your service configuration and try again.",
+          variant: "destructive",
+        });
+        setIsSaving(false);
+        return; // Don't proceed to update local state if sending failed
+      }
+    }
+
     const recipientsSummary = getRecipientSummary();
     const campaignData = {
       subject: composerState.subject,
@@ -212,6 +259,8 @@ export default function EmailsPage() {
       };
       setCampaigns([newCampaign, ...campaigns]);
     }
+    
+    setIsSaving(false);
     setView('manager');
   };
 
@@ -347,7 +396,7 @@ export default function EmailsPage() {
         <CardContent>
           <Tabs 
             value={composerState.recipientSelection.type}
-            onValueChange={(value) => setComposerState(prev => ({ ...prev, recipientSelection: { ...prev.recipientSelection, type: value as any }}))}
+            onValueChange={(value) => setComposerState(prev => ({ ...prev, recipientSelection: { ...prev.recipientSelection, type: value as any, custom: [], manual: '' }}))}
           >
             <TabsList className="grid w-full grid-cols-3">
               <TabsTrigger value="segment">Segments</TabsTrigger>
@@ -403,7 +452,13 @@ export default function EmailsPage() {
                 placeholder="Enter email addresses, separated by commas"
                 rows={8}
                 value={composerState.recipientSelection.manual}
-                onChange={e => setComposerState(prev => ({...prev, recipientSelection: {...prev.recipientSelection, manual: e.target.value}}))}
+                onChange={e => setComposerState(prev => ({
+                    ...prev,
+                    recipientSelection: {
+                        ...prev.recipientSelection,
+                        manual: e.target.value
+                    }
+                }))}
               />
               <p className="text-sm text-muted-foreground mt-2">Emails should be comma-separated.</p>
             </TabsContent>
@@ -465,11 +520,17 @@ export default function EmailsPage() {
             )}
         </CardContent>
          <CardFooter className="flex justify-end gap-2">
-            <Button variant="outline" onClick={() => handleSave('Draft')}><Save className="mr-2 h-4 w-4" />Save Draft</Button>
+            <Button variant="outline" onClick={() => handleSave('Draft')} disabled={isSaving}><Save className="mr-2 h-4 w-4" />Save Draft</Button>
             {composerState.sendNow ? (
-                 <Button onClick={() => handleSave('Sent')}><Send className="mr-2 h-4 w-4" /> Send Now</Button>
+                 <Button onClick={() => handleSave('Sent')} disabled={isSaving}>
+                  {isSaving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Send className="mr-2 h-4 w-4" />}
+                  {isSaving ? 'Sending...' : 'Send Now'}
+                 </Button>
             ) : (
-                <Button onClick={() => handleSave('Scheduled')}><Calendar className="mr-2 h-4 w-4" /> Schedule</Button>
+                <Button onClick={() => handleSave('Scheduled')} disabled={isSaving}>
+                  {isSaving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Calendar className="mr-2 h-4 w-4" />}
+                  {isSaving ? 'Scheduling...' : 'Schedule'}
+                </Button>
             )}
         </CardFooter>
       </Card>
@@ -545,3 +606,5 @@ export default function EmailsPage() {
 
   return view === 'manager' ? <CampaignManagerView /> : <ComposerView />;
 }
+
+    
