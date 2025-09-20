@@ -36,8 +36,9 @@ export default function LearningPage() {
   const [currentAudio, setCurrentAudio] = useState<HTMLAudioElement | null>(null);
   const [loadingAudio, setLoadingAudio] = useState<'question' | 'answer' | null>(null);
   const audioCache = useRef<Record<string, { questionAudio: string; answerAudio: string }>>({});
+  const [isPlayingSequence, setIsPlayingSequence] = useState(false);
 
-  const { isListening, transcript } = useSpeechRecognition();
+  const { isListening, transcript, startListening, stopListening } = useSpeechRecognition();
 
   const categories = useMemo(() => [...new Set(allQuestions.map(q => q.category))], [allQuestions]);
 
@@ -61,68 +62,66 @@ export default function LearningPage() {
     setCurrentIndex(i => (i - 1 + (questions.length || 1)) % (questions.length || 1));
   }, 300), [questions.length]);
 
-  const playAudio = async (type: 'question' | 'answer') => {
+  const playAudio = async (type: 'question' | 'answer'): Promise<void> => {
     if (loadingAudio || !currentQuestion) return;
-  
+
     if (currentAudio) {
       currentAudio.pause();
+      setCurrentAudio(null);
     }
-  
+
     setLoadingAudio(type);
-  
+
     let audioSrc = '';
     const cacheKey = `${currentQuestion.id}`;
-  
-    if (audioCache.current[cacheKey]) {
-      audioSrc = type === 'question' ? audioCache.current[cacheKey].questionAudio : audioCache.current[cacheKey].answerAudio;
-    } else {
-      try {
+
+    try {
+      if (audioCache.current[cacheKey]) {
+        audioSrc = type === 'question' 
+          ? audioCache.current[cacheKey].questionAudio 
+          : audioCache.current[cacheKey].answerAudio;
+      } else {
         const result = await generateVoiceLessons({
           question: currentQuestion.question,
           answer: currentQuestion.answer,
         });
         audioCache.current[cacheKey] = result;
         audioSrc = type === 'question' ? result.questionAudio : result.answerAudio;
-      } catch (error) {
-        console.error("Error generating audio:", error);
-        setLoadingAudio(null);
-        return;
       }
+
+      const audio = new Audio(audioSrc);
+      setCurrentAudio(audio);
+
+      return new Promise((resolve, reject) => {
+        audio.onended = () => {
+          setIsPlaying(false);
+          setCurrentAudio(null);
+          resolve();
+        };
+        
+        audio.onerror = (error) => {
+          setIsPlaying(false);
+          setCurrentAudio(null);
+          setLoadingAudio(null);
+          reject(error);
+        };
+        
+        audio.play().then(() => {
+          setIsPlaying(true);
+          setLoadingAudio(null);
+        }).catch(reject);
+      });
+    } catch (error) {
+      console.error("Error playing audio:", error);
+      setLoadingAudio(null);
+      throw error;
     }
-  
-    const audio = new Audio(audioSrc);
-    setCurrentAudio(audio);
-    setLoadingAudio(null);
-  
-    return new Promise<void>((resolve) => {
-      audio.onended = () => {
-        setIsPlaying(false);
-        setCurrentAudio(null);
-        resolve();
-      };
-      audio.play();
-      setIsPlaying(true);
-    });
   };
 
   const handleRepeat = useCallback(_.debounce(() => {
     playAudio('question');
   }, 300), [currentQuestion, playAudio]);
   
-  useEffect(() => {
-    if (transcript) {
-      const command = transcript.toLowerCase().trim();
-      if (command.includes('next') || command.includes('skip')) {
-        handleNext();
-      } else if (command.includes('back') || command.includes('previous')) {
-        handlePrev();
-      } else if (command.includes('replay') || command.includes('repeat')) {
-        handleRepeat();
-      }
-    }
-  }, [transcript, handleNext, handlePrev, handleRepeat]);
-
-
   useEffect(() => {
     // Cleanup on unmount
     return () => {
@@ -141,22 +140,58 @@ export default function LearningPage() {
     setShowAnswer(false);
   }, [currentIndex, selectedCategory]);
 
-  const playSequence = async () => {
-    await playAudio('question');
-    setShowAnswer(true);
-    await playAudio('answer');
-  }
-
-  const handlePlayPause = () => {
-    if (isPlaying) {
-        if(currentAudio) {
-            currentAudio.pause();
-            setIsPlaying(false);
-        }
-    } else {
-       playSequence();
+  const playSequence = async (): Promise<void> => {
+    if (isPlayingSequence) return;
+    
+    setIsPlayingSequence(true);
+    try {
+      await playAudio('question');
+      setShowAnswer(true);
+      
+      await new Promise(resolve => setTimeout(resolve, 500));
+      
+      await playAudio('answer');
+    } catch (error) {
+      console.error("Error in play sequence:", error);
+    } finally {
+      setIsPlayingSequence(false);
+      setIsPlaying(false);
     }
   };
+
+  const handlePlayPause = async (): Promise<void> => {
+    if (isPlaying) {
+      if (currentAudio) {
+        currentAudio.pause();
+        setIsPlaying(false);
+        setIsPlayingSequence(false);
+      }
+    } else {
+      await playSequence();
+    }
+  };
+
+  useEffect(() => {
+    if (transcript) {
+      const command = transcript.toLowerCase().trim();
+      if (command.includes('next') || command.includes('skip')) {
+        handleNext();
+      } else if (command.includes('back') || command.includes('previous')) {
+        handlePrev();
+      } else if (command.includes('replay') || command.includes('repeat')) {
+        handleRepeat();
+      } else if (command.includes('play') || command.includes('start')) {
+        handlePlayPause();
+      } else if (command.includes('stop') || command.includes('pause')) {
+        if (currentAudio) {
+          currentAudio.pause();
+          setIsPlaying(false);
+          setIsPlayingSequence(false);
+        }
+      }
+    }
+  }, [transcript, handleNext, handlePrev, handleRepeat, handlePlayPause]);
+
 
   const selectCategory = (category: string) => {
     setSelectedCategory(category);
@@ -236,20 +271,22 @@ export default function LearningPage() {
           )}
 
           <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
-             <Button variant="outline" size="icon" onClick={handlePrev} disabled={loadingAudio !== null}>
+             <Button variant="outline" size="icon" onClick={handlePrev} disabled={loadingAudio !== null || isPlayingSequence}>
                 <SkipBack />
               </Button>
-            <Button size="lg" onClick={handlePlayPause} disabled={loadingAudio === 'question' || loadingAudio === 'answer'}>
-              {loadingAudio ? (
+            <Button size="lg" onClick={handlePlayPause} disabled={loadingAudio === 'question' || loadingAudio === 'answer' || isPlayingSequence}>
+              {isPlayingSequence ? (
+                <Loader2 className="animate-spin" />
+              ) : loadingAudio ? (
                 <Loader2 className="animate-spin" />
               ) : isPlaying ? (
                 <Pause className="h-6 w-6" />
               ) : (
                 <Play className="h-6 w-6" />
               )}
-               <span className="ml-2">{isPlaying ? 'Pause' : 'Play'}</span>
+               <span className="ml-2">{isPlayingSequence ? 'Playing...' : isPlaying ? 'Pause' : 'Play Lesson'}</span>
             </Button>
-            <Button variant="outline" size="icon" onClick={handleNext} disabled={loadingAudio !== null}>
+            <Button variant="outline" size="icon" onClick={handleNext} disabled={loadingAudio !== null || isPlayingSequence}>
               <SkipForward />
             </Button>
           </div>
@@ -259,7 +296,7 @@ export default function LearningPage() {
                 <Info className="mr-2 h-4 w-4" />
                 {showAnswer ? 'Hide Answer' : 'Show Answer'}
             </Button>
-            <Button variant="secondary" onClick={() => playAudio('answer')} disabled={loadingAudio === 'answer'}>
+            <Button variant="secondary" onClick={() => playAudio('answer')} disabled={loadingAudio === 'answer' || isPlayingSequence}>
                 {loadingAudio === 'answer' ? <Loader2 className="animate-spin mr-2"/> : <Volume2 className="mr-2 h-4 w-4" />}
                 Play Answer Only
             </Button>
@@ -267,7 +304,7 @@ export default function LearningPage() {
         </CardContent>
       </Card>
       <div className="text-center mt-4 text-sm text-muted-foreground">
-        Voice commands enabled: "Next", "Back", "Replay"
+        Voice commands enabled: "Play", "Pause", "Next", "Back", "Replay"
       </div>
     </div>
   );
