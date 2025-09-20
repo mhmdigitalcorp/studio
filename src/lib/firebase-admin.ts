@@ -5,6 +5,7 @@ import { getStorage } from 'firebase-admin/storage';
 import type { ServiceAccount } from 'firebase-admin/app';
 
 let app: App;
+const BUCKET_NAME = 'studio-5887976942-d4420.appspot.com';
 
 if (!getApps().length) {
   const serviceAccount: ServiceAccount = {
@@ -15,7 +16,7 @@ if (!getApps().length) {
 
   app = initializeApp({
     credential: cert(serviceAccount),
-    storageBucket: `${process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID}.appspot.com`,
+    storageBucket: BUCKET_NAME,
   });
 } else {
   app = getApps()[0];
