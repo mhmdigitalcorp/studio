@@ -72,6 +72,8 @@ export default function SettingsPage() {
     const { success, settings: fetchedSettings } = await manageSettings({ action: 'get' });
     if (success && fetchedSettings) {
       setSettings(fetchedSettings);
+      setIsEmailEnabled(fetchedSettings.provider !== 'none');
+      setIsAiEnabled(!!fetchedSettings.aiApiKey);
     }
     setIsLoading(false);
   }, []);
@@ -102,22 +104,32 @@ export default function SettingsPage() {
 
   const handleToggleEmailService = (enabled: boolean) => {
     setIsEmailEnabled(enabled);
+    if (!enabled) {
+        // If disabling, we might want to clear the provider setting
+        handleSaveConfiguration({ ...settings, provider: 'none' });
+    }
   };
   
   const handleToggleAiService = (enabled: boolean) => {
     setIsAiEnabled(enabled);
+     if (!enabled) {
+        handleSaveAiKey('');
+    }
   };
 
-  const handleSaveConfiguration = async () => {
+  const handleSaveConfiguration = async (newSettings?: SettingsData) => {
     setIsSaving(true);
-    const result = await manageSettings({ action: 'set', settingsData: dialogSettings });
+    const settingsToSave = newSettings || dialogSettings;
+    const result = await manageSettings({ action: 'set', settingsData: settingsToSave });
     if (result.success && result.settings) {
       setSettings(result.settings);
       toast({
           title: "Configuration Saved",
           description: "Your settings have been updated.",
       });
-      setConfigDialogOpen(false);
+      if (!newSettings) { // Only close dialog if it's open
+        setConfigDialogOpen(false);
+      }
     } else {
       toast({ title: "Error", description: result.message, variant: "destructive" });
     }
@@ -129,7 +141,6 @@ export default function SettingsPage() {
     setIsTestingEmail(true);
     try {
         const result = await testEmailService({
-            service: settings.provider,
             recipient: 'admin@learnflow.app'
         });
 
@@ -148,9 +159,9 @@ export default function SettingsPage() {
     setIsTestingEmail(false);
   }
   
-  const handleSaveAiKey = async () => {
+  const handleSaveAiKey = async (apiKey: string) => {
     setIsSaving(true);
-    const result = await manageSettings({ action: 'set', settingsData: { aiApiKey: settings.aiApiKey } });
+    const result = await manageSettings({ action: 'set', settingsData: { aiApiKey: apiKey } });
     if (result.success) {
         toast({ title: "AI Key Saved", description: "The AI API key has been securely stored." });
         if(result.settings) setSettings(s => ({ ...s, ...result.settings }));
@@ -236,7 +247,7 @@ export default function SettingsPage() {
                   />
                 </div>
                 <div className="flex gap-2 self-end">
-                    <Button variant="secondary" disabled={!isAiEnabled || !settings.aiApiKey || isSaving} onClick={handleSaveAiKey}>
+                    <Button variant="secondary" disabled={!isAiEnabled || !settings.aiApiKey || isSaving} onClick={() => handleSaveAiKey(settings.aiApiKey || '')}>
                         {isSaving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
                         {isSaving ? 'Saving...' : 'Save Key'}
                     </Button>
@@ -323,7 +334,7 @@ export default function SettingsPage() {
                   <SelectItem value="none">None</SelectItem>
                   <SelectItem value="sendgrid">SendGrid</SelectItem>
                   <SelectItem value="smtp">SMTP</SelectItem>
-                  <SelectItem value="gmail">Gmail</SelectItem>
+                  <SelectItem value="gmail" disabled>Gmail (Coming Soon)</SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -375,7 +386,7 @@ export default function SettingsPage() {
             <DialogClose asChild>
               <Button variant="outline" disabled={isSaving}>Cancel</Button>
             </DialogClose>
-            <Button onClick={handleSaveConfiguration} disabled={dialogSettings.provider === 'gmail' || isSaving}>
+            <Button onClick={() => handleSaveConfiguration()} disabled={dialogSettings.provider === 'gmail' || isSaving}>
               {isSaving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
               Save Configuration
             </Button>

@@ -5,10 +5,10 @@
 
 import { ai } from '@/ai/genkit';
 import { z } from 'zod';
+import { sendEmail } from '@/services/email-service';
 import { db } from '@/lib/firebase-admin';
 
 const TestEmailServiceInputSchema = z.object({
-  service: z.string().describe('The email service to test.'),
   recipient: z.string().email().describe('The email address to send a test to.'),
 });
 
@@ -21,7 +21,6 @@ const TestEmailServiceOutputSchema = z.object({
 
 export type TestEmailServiceOutput = z.infer<typeof TestEmailServiceOutputSchema>;
 
-
 export async function testEmailService(input: TestEmailServiceInput): Promise<TestEmailServiceOutput> {
   return testEmailServiceFlow(input);
 }
@@ -32,32 +31,36 @@ const testEmailServiceFlow = ai.defineFlow(
     inputSchema: TestEmailServiceInputSchema,
     outputSchema: TestEmailServiceOutputSchema,
   },
-  async (input) => {
-    // In a real application, you would retrieve the secure API key for the service
-    // and use a library like Nodemailer or a provider's SDK to send an email.
-    // For this example, we will simulate the process.
-    
-    // Fetch 'from' email from settings
-    const settingsDoc = await db.collection('settings').doc('app-config').get();
-    const fromEmail = settingsDoc.exists ? settingsDoc.data()?.fromEmail : 'noreply@learnflow.app';
+  async ({ recipient }) => {
+    try {
+      const settingsDoc = await db.collection('settings').doc('app-config').get();
+      if (!settingsDoc.exists) {
+        return { success: false, message: 'Email service not configured.' };
+      }
+      const settings = settingsDoc.data();
+      
+      if (!settings?.provider || settings.provider === 'none') {
+        return { success: false, message: 'No email provider selected.' };
+      }
+      
+      await sendEmail({
+        to: recipient,
+        from: settings.fromEmail,
+        subject: 'LearnFlow Email Service Test',
+        text: 'This is a test email from LearnFlow. Your email service is configured correctly.',
+        html: '<p>This is a test email from LearnFlow. Your email service is configured correctly.</p>',
+      });
 
-    console.log(`Simulating test email from ${fromEmail} to ${input.recipient} via ${input.service}`);
-
-    // Simulate a network delay
-    await new Promise(resolve => setTimeout(resolve, 1500));
-
-    // Simulate a failure for a specific service for demonstration purposes
-    if (input.service === 'gmail') {
-       return {
+      return {
+        success: true,
+        message: `Test email successfully sent to ${recipient}.`,
+      };
+    } catch (error: any) {
+      console.error('Error in testEmailServiceFlow:', error);
+      return {
         success: false,
-        message: 'Gmail provider is not supported for automated testing in this demo.',
+        message: `Failed to send test email: ${error.message}`,
       };
     }
-
-    // Simulate success
-    return {
-      success: true,
-      message: `Test email successfully sent from ${fromEmail} to ${input.recipient}.`,
-    };
   }
 );
