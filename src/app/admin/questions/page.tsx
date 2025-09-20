@@ -50,17 +50,17 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { bulkUpload } from '@/ai/flows/bulk-upload';
+import { manageQuestion } from '@/ai/flows/manage-question';
 import { useToast } from '@/hooks/use-toast';
 
-// Mock data fetching function. In a real app, this would be `onSnapshot` from Firebase.
 const fetchQuestions = async (): Promise<Question[]> => {
-  // Simulate API call
-  await new Promise(res => setTimeout(res, 500));
-  return [
-    { id: "1", question: "What is the primary function of the mitochondria in a cell?", answer: "The primary function of mitochondria is to generate most of the cell's supply of adenosine triphosphate (ATP), used as a source of chemical energy.", category: "Biology", remarks: "Key concept for cellular respiration." },
-    { id: "2", question: "Who wrote 'To Kill a Mockingbird'?", answer: "Harper Lee wrote 'To Kill a Mockingbird'.", category: "Literature", remarks: "Published in 1960, a classic of modern American literature." },
-    { id: "3", question: "What is the formula for calculating the area of a circle?", answer: "The formula for the area of a circle is A = πr², where r is the radius of the circle.", category: "Mathematics", remarks: "Pi (π) is approximately 3.14159." },
-  ];
+  const { success, questions, message } = await manageQuestion({ action: 'getAll' });
+  if (success) {
+    return questions || [];
+  } else {
+    console.error("Failed to fetch questions:", message);
+    return [];
+  }
 };
 
 
@@ -111,28 +111,42 @@ export default function QuestionsPage() {
     setDeleteDialogOpen(true);
   };
 
-  const handleDeleteQuestion = () => {
+  const handleDeleteQuestion = async () => {
     if (questionToDelete) {
-      // In a real app, call a backend flow to delete
-      setQuestions(questions.filter((q) => q.id !== questionToDelete.id));
-      toast({ title: "Question Deleted" });
+      setIsProcessing(true);
+      const result = await manageQuestion({ action: 'delete', questionId: questionToDelete.id });
+      if (result.success) {
+        toast({ title: "Question Deleted" });
+        setQuestions(prev => prev.filter((q) => q.id !== questionToDelete.id));
+      } else {
+        toast({ title: "Error", description: result.message, variant: "destructive" });
+      }
       setDeleteDialogOpen(false);
       setQuestionToDelete(null);
+      setIsProcessing(false);
     }
   };
 
-  const handleSaveQuestion = () => {
-    // In a real app, call a backend flow to create/update
+  const handleSaveQuestion = async () => {
     setIsProcessing(true);
     if (selectedQuestion) {
       // Update existing question
-      setQuestions(questions.map((q) => (q.id === selectedQuestion.id ? { ...q, ...newQuestion, id: q.id } : q)));
-      toast({ title: "Question Updated" });
+      const result = await manageQuestion({ action: 'update', questionId: selectedQuestion.id, questionData: newQuestion });
+      if (result.success && result.question) {
+        setQuestions(prev => prev.map((q) => (q.id === selectedQuestion.id ? result.question! : q)));
+        toast({ title: "Question Updated" });
+      } else {
+        toast({ title: "Error", description: result.message, variant: "destructive" });
+      }
     } else {
       // Create new question
-      const newId = `q_${Date.now()}`;
-      setQuestions([...questions, { id: newId, ...newQuestion }]);
-      toast({ title: "Question Created" });
+      const result = await manageQuestion({ action: 'create', questionData: newQuestion });
+      if (result.success && result.question) {
+        setQuestions(prev => [...prev, result.question!]);
+        toast({ title: "Question Created" });
+      } else {
+        toast({ title: "Error", description: result.message, variant: "destructive" });
+      }
     }
     setIsProcessing(false);
     setCreateDialogOpen(false);
@@ -220,7 +234,7 @@ export default function QuestionsPage() {
                   ))
               ) : questions.map((q) => (
                 <TableRow key={q.id}>
-                  <TableCell className="font-medium">{`Q-${String(q.id).padStart(4, '0')}`}</TableCell>
+                  <TableCell className="font-medium">{`Q-${String(q.id).substring(0,4)}`}</TableCell>
                   <TableCell>
                     <Badge variant="secondary">{q.category}</Badge>
                   </TableCell>
