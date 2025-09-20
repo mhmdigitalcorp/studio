@@ -24,15 +24,12 @@ import {
   Repeat,
   Trophy,
   BookOpen,
-  GraduationCap,
   Mic,
   ArrowLeft,
   History,
   FileQuestion,
   BookCopy,
   Code,
-  Video,
-  VideoOff,
 } from 'lucide-react';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { cn } from '@/lib/utils';
@@ -125,11 +122,9 @@ export default function ExamPage() {
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
   const [score, setScore] = useState({ correct: 0, total: 0 });
   const [interactionState, setInteractionState] = useState<InteractionState>('idle');
-  const [hasCameraPermission, setHasCameraPermission] = useState<boolean | null>(null);
-
-  const videoRef = useRef<HTMLVideoElement>(null);
+  
   const { toast } = useToast();
-  const { isListening, transcript, startListening, stopListening } = useSpeechRecognition();
+  const { isListening, transcript, startListening, stopListening, browserSupportsSpeechRecognition, micPermission } = useSpeechRecognition();
   const { speak, isSpeaking } = useTTS();
   const currentQuestion = examQuestions[currentQuestionIndex];
 
@@ -142,32 +137,6 @@ export default function ExamPage() {
     }
     loadData();
   }, []);
-
-  useEffect(() => {
-    const getCameraPermission = async () => {
-      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-        setHasCameraPermission(false);
-        return;
-      }
-      try {
-        const stream = await navigator.mediaDevices.getUserMedia({ video: true });
-        setHasCameraPermission(true);
-        if (videoRef.current) {
-          videoRef.current.srcObject = stream;
-        }
-      } catch (error) {
-        console.error('Error accessing camera:', error);
-        setHasCameraPermission(false);
-        toast({
-          variant: 'destructive',
-          title: 'Camera Access Denied',
-          description:
-            'Please enable camera permissions in your browser settings for AI proctoring.',
-        });
-      }
-    };
-    getCameraPermission();
-  }, [toast]);
 
   useEffect(() => {
     if (transcript) {
@@ -186,9 +155,15 @@ export default function ExamPage() {
     if (!currentQuestion) return;
     setInteractionState('reading_question');
     await speak(currentQuestion.question);
-    setInteractionState('listening');
-    startListening();
-  }, [currentQuestion, speak, startListening]);
+    
+    if (micPermission === 'granted') {
+      setInteractionState('listening');
+      startListening();
+    } else {
+      // Fallback for no mic permission
+      setInteractionState('listening'); 
+    }
+  }, [currentQuestion, speak, startListening, micPermission]);
 
   useEffect(() => {
     if (examState === 'ongoing' && interactionState === 'idle') {
@@ -208,7 +183,7 @@ export default function ExamPage() {
   };
 
   const handleSubmit = async () => {
-    if (!userAnswer.trim() || interactionState !== 'listening') return;
+    if (!userAnswer.trim() || (interactionState !== 'listening' && interactionState !== 'retake_prompt')) return;
     stopListening();
     setInteractionState('processing');
     setFeedback(null);
@@ -232,7 +207,9 @@ export default function ExamPage() {
         await speak('The correct answer is: ' + currentQuestion.answer);
         setInteractionState('retake_prompt');
         await speak('Are you ready for a retake?');
-        startListening();
+        if (micPermission === 'granted') {
+          startListening();
+        }
       }
     } catch (error) {
       console.error('Error processing answer:', error);
@@ -261,7 +238,7 @@ export default function ExamPage() {
   const handleMicClick = () => {
     if (isListening) stopListening();
     else {
-      if (interactionState === 'listening' || interactionState === 'retake_prompt') {
+      if ((interactionState === 'listening' || interactionState === 'retake_prompt') && micPermission === 'granted') {
         startListening();
       }
     }
@@ -277,6 +254,8 @@ export default function ExamPage() {
     setSelectedCategory(null);
     stopListening();
   };
+  
+  const isMicActive = browserSupportsSpeechRecognition && micPermission === 'granted';
 
   if (isLoading) {
     return <div className="flex justify-center items-center h-full"><Loader2 className="h-8 w-8 animate-spin" /></div>;
@@ -364,7 +343,7 @@ export default function ExamPage() {
     <div className="max-w-4xl mx-auto">
       <Card
         className={cn(
-          'transition-all duration-300',
+          'transition-all duration-300 border-2',
           stateConfig[interactionState].borderColor
         )}
       >
@@ -377,22 +356,7 @@ export default function ExamPage() {
                 <span>Score: {score.correct}</span>
               </div>
             </div>
-            <div className="flex flex-col items-end gap-2">
-              <div className="w-32 h-24 bg-background rounded-md overflow-hidden border">
-                <video ref={videoRef} className="w-full h-full object-cover" autoPlay muted />
-              </div>
-              <div className="flex items-center gap-1 text-xs text-muted-foreground">
-                {hasCameraPermission ? (
-                  <>
-                    <Video className="h-3 w-3 text-green-500" /> AI Proctoring Active
-                  </>
-                ) : (
-                  <>
-                    <VideoOff className="h-3 w-3 text-red-500" /> Camera Inactive
-                  </>
-                )}
-              </div>
-            </div>
+             <Button variant="outline" size="sm" onClick={resetExam}>Exit Exam</Button>
           </div>
           <Progress value={((currentQuestionIndex) / examQuestions.length) * 100} className="w-full mt-4" />
         </CardHeader>
@@ -405,24 +369,26 @@ export default function ExamPage() {
               placeholder={stateConfig[interactionState].prompt}
               value={userAnswer}
               onChange={(e) => setUserAnswer(e.target.value)}
-              disabled={interactionState !== 'listening'}
+              disabled={interactionState !== 'listening' && interactionState !== 'retake_prompt'}
               rows={5}
-              className="pr-20"
+              className={cn("pr-20 transition-all duration-300 border-2", stateConfig[interactionState].borderColor)}
             />
-            <Button
-              size="icon"
-              variant="ghost"
-              onClick={handleMicClick}
-              className={cn(
-                'absolute right-3 top-1/2 -translate-y-1/2 rounded-full h-10 w-10 transition-colors',
-                stateConfig[interactionState].micColor
-              )}
-              disabled={isSpeaking || interactionState === 'processing'}
-            >
-              {interactionState === 'processing' ? <Loader2 className="h-5 w-5 animate-spin" /> : <Mic className="h-5 w-5" />}
-            </Button>
+             {isMicActive && (
+                <Button
+                  size="icon"
+                  variant="ghost"
+                  onClick={handleMicClick}
+                  className={cn(
+                    'absolute right-3 top-1/2 -translate-y-1/2 rounded-full h-10 w-10 transition-colors',
+                    stateConfig[interactionState].micColor
+                  )}
+                  disabled={isSpeaking || interactionState === 'processing'}
+                >
+                  {interactionState === 'processing' ? <Loader2 className="h-5 w-5 animate-spin" /> : <Mic className="h-5 w-5" />}
+                </Button>
+             )}
           </div>
-          <Button onClick={handleSubmit} disabled={interactionState !== 'listening' || !userAnswer.trim() || isSpeaking} className="w-full">
+          <Button onClick={handleSubmit} disabled={(interactionState !== 'listening' && interactionState !== 'retake_prompt') || !userAnswer.trim() || isSpeaking} className="w-full">
             <Send className="mr-2 h-4 w-4" />
             Submit Answer
           </Button>

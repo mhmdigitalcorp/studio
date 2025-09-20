@@ -11,27 +11,31 @@ declare global {
 export const useSpeechRecognition = () => {
   const [transcript, setTranscript] = useState('');
   const [isListening, setIsListening] = useState(false);
+  const [micPermission, setMicPermission] = useState<'prompt' | 'granted' | 'denied'>('prompt');
   const recognitionRef = useRef<any>(null);
-  const isStartingRef = useRef(false); // Track if we're in the process of starting
+  const isStartingRef = useRef(false);
+
+  const browserSupportsSpeechRecognition = typeof window !== 'undefined' && ('SpeechRecognition' in window || 'webkitSpeechRecognition' in window);
 
   useEffect(() => {
-    if (recognitionRef.current) return;
+    if (!browserSupportsSpeechRecognition) return;
+
+    navigator.permissions.query({ name: 'microphone' as PermissionName }).then((permissionStatus) => {
+      setMicPermission(permissionStatus.state);
+      permissionStatus.onchange = () => {
+        setMicPermission(permissionStatus.state);
+      };
+    });
 
     const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-    if (!SpeechRecognition) {
-      console.warn('Speech Recognition API is not supported in this browser.');
-      return;
-    }
-    
     const recognition = new SpeechRecognition();
     recognition.continuous = true;
     recognition.interimResults = true;
     recognition.lang = 'en-US';
-      
+
     recognition.onresult = (event: any) => {
       let interimTranscript = '';
       let finalTranscript = '';
-      
       for (let i = event.resultIndex; i < event.results.length; i++) {
         const transcriptPart = event.results[i][0].transcript;
         if (event.results[i].isFinal) {
@@ -40,31 +44,25 @@ export const useSpeechRecognition = () => {
           interimTranscript += transcriptPart;
         }
       }
-      
       setTranscript(finalTranscript || interimTranscript);
     };
-      
+
     recognition.onerror = (event: any) => {
-      // The "no-speech" error is common and not a critical failure.
-      // We can ignore it to avoid cluttering the console.
       if (event.error === 'no-speech' || event.error === 'aborted') {
-        setIsListening(false);
-        isStartingRef.current = false;
-        return;
-      }
-      if (event.error === 'not-allowed') {
-        // Handle permission denial gracefully
+        // These are not critical errors, just the mic timing out or being stopped.
+      } else if (event.error === 'not-allowed') {
+        setMicPermission('denied');
         console.warn('Speech recognition permission denied.');
       } else {
         console.error('Speech recognition error', event.error);
       }
-      setIsListening(false);
       isStartingRef.current = false;
+      setIsListening(false);
     };
-      
+
     recognition.onend = () => {
-      setIsListening(false);
       isStartingRef.current = false;
+      setIsListening(false);
     };
 
     recognitionRef.current = recognition;
@@ -76,10 +74,10 @@ export const useSpeechRecognition = () => {
         recognitionRef.current = null;
       }
     };
-  }, []);
+  }, [browserSupportsSpeechRecognition]);
 
   const startListening = useCallback(() => {
-    if (recognitionRef.current && !isListening && !isStartingRef.current) {
+    if (recognitionRef.current && !isListening && !isStartingRef.current && micPermission === 'granted') {
       isStartingRef.current = true;
       setTranscript('');
       try {
@@ -89,8 +87,10 @@ export const useSpeechRecognition = () => {
         console.error('Error starting speech recognition:', error);
         isStartingRef.current = false;
       }
+    } else if (micPermission !== 'granted') {
+      console.warn("Cannot start listening: Microphone permission not granted.");
     }
-  }, [isListening]);
+  }, [isListening, micPermission]);
 
   const stopListening = useCallback(() => {
     if (recognitionRef.current && (isListening || isStartingRef.current)) {
@@ -108,6 +108,8 @@ export const useSpeechRecognition = () => {
     transcript,
     isListening,
     startListening,
-    stopListening
+    stopListening,
+    micPermission,
+    browserSupportsSpeechRecognition
   };
 };
