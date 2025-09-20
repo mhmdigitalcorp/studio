@@ -44,6 +44,11 @@ export default function UserProfilePage() {
   const [phone, setPhone] = useState('');
   const [isSaving, setIsSaving] = useState(false);
 
+  // Fetch fresh user data when the page loads
+  useEffect(() => {
+    refreshUser();
+  }, [refreshUser]);
+
   useEffect(() => {
     if (currentUser) {
       setName(currentUser.name || '');
