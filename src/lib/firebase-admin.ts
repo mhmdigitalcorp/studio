@@ -1,6 +1,7 @@
 // src/lib/firebase-admin.ts
 import { initializeApp, getApps, App, cert } from 'firebase-admin/app';
 import { getFirestore } from 'firebase-admin/firestore';
+import { getStorage } from 'firebase-admin/storage';
 import type { ServiceAccount } from 'firebase-admin/app';
 
 let app: App;
@@ -14,11 +15,13 @@ if (!getApps().length) {
 
   app = initializeApp({
     credential: cert(serviceAccount),
+    storageBucket: `${process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID}.appspot.com`,
   });
 } else {
   app = getApps()[0];
 }
 
 const db = getFirestore(app);
+const storage = getStorage(app);
 
-export { app, db };
+export { app, db, storage };
