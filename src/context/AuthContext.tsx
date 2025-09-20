@@ -5,6 +5,8 @@ import { onAuthStateChanged, User as FirebaseUser, createUserWithEmailAndPasswor
 import { doc, setDoc, getDoc, DocumentData } from 'firebase/firestore';
 import { auth, db } from '@/lib/firebase';
 import { useRouter } from 'next/navigation';
+import { manageUser } from '@/ai/flows/manage-user';
+import { User as AppUser } from '@/lib/data';
 
 interface User extends DocumentData {
   uid: string;
@@ -35,10 +37,6 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         if (userDoc.exists()) {
           setCurrentUser({ uid: user.uid, ...userDoc.data() } as User);
         } else {
-            // This case might happen if a user exists in auth but not firestore
-            // We can choose to create a doc here, or log them out.
-            // For now, we will assume a backend function handles user doc creation.
-            // To make the app usable without the function, we can create a temporary client user object.
              const tempUser: User = {
               uid: user.uid,
               email: user.email,
@@ -57,15 +55,29 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   }, []);
   
   const signUp = async ({ email, password, name }: {email:any, password:any, name:any}) => {
-    // This function should now ONLY create the user in Firebase Auth.
-    // The creation of the user document in Firestore should be handled
-    // by a secure backend trigger (e.g., a Cloud Function for Firebase).
     const userCredential = await createUserWithEmailAndPassword(auth, email, password);
     
-    // The 'setDoc' call that was here is removed to prevent the permissions error.
-    // In a real application, an 'onUserCreate' Cloud Function would now take over
-    // to create the corresponding document in Firestore.
+    // After creating auth user, call the secure backend flow to create the Firestore document.
+    const newUser: Partial<AppUser> = {
+      id: userCredential.user.uid, // Important: Use the auth UID as the document ID
+      name,
+      email,
+      status: 'Active',
+      role: 'user'
+    };
 
+    // This calls the secure backend flow.
+    const result = await manageUser({ action: 'create', userData: newUser, userId: userCredential.user.uid });
+
+    if (!result.success) {
+      // If Firestore doc creation fails, we should consider how to handle it.
+      // For now, we'll log the error. In a real app, you might delete the auth user
+      // or add them to a retry queue.
+      console.error("Failed to create user document in Firestore:", result.message);
+      throw new Error(result.message);
+    }
+    
+    // The user object in the context will be set by the onAuthStateChanged listener.
     return userCredential;
   };
   

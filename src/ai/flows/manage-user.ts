@@ -48,7 +48,7 @@ const manageUserFlow = ai.defineFlow(
     outputSchema: ManageUserOutputSchema,
   },
   async (input) => {
-    // In a real app, you would check admin privileges here.
+    // In a real app, you would check admin privileges here for certain actions.
     const usersCollection = collection(db, 'users');
 
     try {
@@ -63,20 +63,21 @@ const manageUserFlow = ai.defineFlow(
             if (!input.userData || !input.userData.email || !input.userData.name) {
               return { success: false, message: 'User data, email, or name is missing for create action.' };
             }
-            // In a real app, you'd create the user in Firebase Auth first.
-            // For now, we'll just create the Firestore document.
-            const newId = `usr_${Date.now()}`;
+            
+            // Use the provided userId (from Auth) or generate a new one for admin creation.
+            const newId = input.userId || `usr_${Date.now()}`;
+            
             const newUser: User = {
               id: newId,
               name: input.userData.name,
               email: input.userData.email,
               phone: input.userData.phone || '',
-              avatar: `https://i.pravatar.cc/150?u=${newId}`,
+              avatar: input.userData.avatar || `https://i.pravatar.cc/150?u=${newId}`,
               status: input.userData.status || 'Active',
               lastLogin: new Date().toISOString().split('T')[0],
               score: 0,
               progress: 0,
-              role: 'user',
+              role: input.userData.role || 'user',
             };
             await setDoc(doc(db, 'users', newId), newUser);
             return { success: true, message: 'User created successfully.', user: newUser };
