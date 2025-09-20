@@ -232,7 +232,7 @@ export default function UserProfilePage() {
                 <AlertTitle>Microphone Active</AlertTitle>
                 <AlertDescription>
                   Your microphone is set up correctly for voice interaction.
-                </Description>
+                </AlertDescription>
               </Alert>
             ) : (
                <Alert>
@@ -240,7 +240,7 @@ export default function UserProfilePage() {
                 <AlertTitle>Microphone Access</AlertTitle>
                 <AlertDescription>
                   Microphone access will be requested when you start an exam.
-                </Description>
+                </AlertDescription>
               </Alert>
             )}
           </CardContent>
