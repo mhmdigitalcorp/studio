@@ -44,6 +44,12 @@ export const useSpeechRecognition = () => {
     };
       
     recognition.onerror = (event: any) => {
+      // The "no-speech" error is common and not a critical failure.
+      // We can ignore it to avoid cluttering the console.
+      if (event.error === 'no-speech') {
+        setIsListening(false);
+        return;
+      }
       console.error('Speech recognition error', event.error);
       setIsListening(false);
     };
