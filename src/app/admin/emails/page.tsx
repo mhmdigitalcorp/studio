@@ -52,12 +52,19 @@ import {
   DialogTitle,
   DialogFooter,
   DialogClose,
-  DialogDescription
+  DialogDescription,
 } from '@/components/ui/dialog';
 import { campaigns as initialCampaigns, Campaign } from '@/lib/email-data';
 import { users as allUsers, User } from '@/lib/data';
 import { Badge } from '@/components/ui/badge';
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -67,7 +74,7 @@ import {
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
-} from "@/components/ui/alert-dialog";
+} from '@/components/ui/alert-dialog';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -83,7 +90,6 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { cn } from '@/lib/utils';
 import Link from 'next/link';
 import { useToast } from '@/hooks/use-toast';
-
 
 type ViewMode = 'manager' | 'composer';
 type ServiceStatus = 'operational' | 'degraded' | 'not-configured';
@@ -102,12 +108,408 @@ const getInitialComposerState = () => ({
   scheduledAt: new Date(),
 });
 
-const statusConfig: Record<ServiceStatus, { text: string; className: string; icon: React.ReactNode }> = {
-  'operational': { text: 'Operational', className: 'bg-green-500', icon: <CheckCircle2 className="h-4 w-4" /> },
-  'degraded': { text: 'Degraded', className: 'bg-yellow-500', icon: <AlertTriangle className="h-4 w-4" /> },
-  'not-configured': { text: 'Not Configured', className: 'bg-red-500', icon: <Settings className="h-4 w-4" /> },
+const statusConfig: Record<
+  ServiceStatus,
+  { text: string; className: string; icon: React.ReactNode }
+> = {
+  operational: {
+    text: 'Operational',
+    className: 'bg-green-500',
+    icon: <CheckCircle2 className="h-4 w-4" />,
+  },
+  degraded: {
+    text: 'Degraded',
+    className: 'bg-yellow-500',
+    icon: <AlertTriangle className="h-4 w-4" />,
+  },
+  'not-configured': {
+    text: 'Not Configured',
+    className: 'bg-red-500',
+    icon: <Settings className="h-4 w-4" />,
+  },
 };
 
+const CampaignManagerView = ({
+  campaigns,
+  handleOpenCreate,
+  handleOpenEdit,
+  handleOpenDeleteDialog,
+  currentStatus,
+}: {
+  campaigns: Campaign[];
+  handleOpenCreate: () => void;
+  handleOpenEdit: (campaign: Campaign) => void;
+  handleOpenDeleteDialog: (campaign: Campaign) => void;
+  currentStatus: { text: string; className: string; icon: React.ReactNode };
+}) => (
+  <Card>
+    <CardHeader>
+      <div className="flex items-start md:items-center justify-between flex-col md:flex-row gap-4">
+        <div>
+          <CardTitle className="font-headline text-2xl flex items-center gap-2">
+            <Mail />
+            Email Campaigns
+          </CardTitle>
+          <CardDescription>
+            View, manage, and create your email campaigns.
+          </CardDescription>
+        </div>
+        <div className="flex items-center gap-4">
+          <Link
+            href="/admin/settings"
+            className="flex items-center gap-2 text-sm font-medium p-2 rounded-md bg-secondary"
+          >
+            <div className={cn('h-2.5 w-2.5 rounded-full', currentStatus.className)} />
+            <span>Email Service: {currentStatus.text}</span>
+          </Link>
+          <Button onClick={handleOpenCreate}>
+            <PlusCircle className="mr-2 h-4 w-4" />
+            Create New Campaign
+          </Button>
+        </div>
+      </div>
+    </CardHeader>
+    <CardContent>
+      <Table>
+        <TableHeader>
+          <TableRow>
+            <TableHead>Campaign</TableHead>
+            <TableHead>Status</TableHead>
+            <TableHead>Recipients</TableHead>
+            <TableHead>Sent/Scheduled</TableHead>
+            <TableHead className="text-right">Actions</TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {campaigns.map(campaign => (
+            <TableRow key={campaign.id}>
+              <TableCell className="font-medium">{campaign.subject}</TableCell>
+              <TableCell>
+                <Badge
+                  variant={
+                    campaign.status === 'Sent'
+                      ? 'default'
+                      : campaign.status === 'Draft'
+                        ? 'secondary'
+                        : 'outline'
+                  }
+                >
+                  {campaign.status}
+                </Badge>
+              </TableCell>
+              <TableCell>{campaign.recipients}</TableCell>
+              <TableCell>
+                {campaign.date === 'N/A'
+                  ? 'N/A'
+                  : format(new Date(campaign.date), 'PPP p')}
+              </TableCell>
+              <TableCell className="text-right">
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button variant="ghost" className="h-8 w-8 p-0">
+                      <span className="sr-only">Open menu</span>
+                      <MoreHorizontal className="h-4 w-4" />
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end">
+                    <DropdownMenuItem onClick={() => handleOpenEdit(campaign)}>
+                      <Edit className="mr-2 h-4 w-4" />
+                      Edit
+                    </DropdownMenuItem>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem
+                      className="text-destructive focus:text-destructive"
+                      onClick={() => handleOpenDeleteDialog(campaign)}
+                    >
+                      <Trash2 className="mr-2 h-4 w-4" />
+                      Delete
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              </TableCell>
+            </TableRow>
+          ))}
+        </TableBody>
+      </Table>
+    </CardContent>
+  </Card>
+);
+
+const ComposerView = ({
+  composerState,
+  setComposerState,
+  setView,
+  userSearchTerm,
+  setUserSearchTerm,
+  filteredUsers,
+  handleCustomUserSelect,
+  setAiFormState,
+  setAiModalOpen,
+  handleSave,
+  isSaving,
+}: {
+  composerState: ReturnType<typeof getInitialComposerState>;
+  setComposerState: React.Dispatch<
+    React.SetStateAction<ReturnType<typeof getInitialComposerState>>
+  >;
+  setView: (view: ViewMode) => void;
+  userSearchTerm: string;
+  setUserSearchTerm: (term: string) => void;
+  filteredUsers: User[];
+  handleCustomUserSelect: (userId: string) => void;
+  setAiFormState: React.Dispatch<React.SetStateAction<Omit<GenerateEmailCampaignInput, 'targetAudience'>>>;
+  setAiModalOpen: (isOpen: boolean) => void;
+  handleSave: (status: 'Draft' | 'Scheduled' | 'Sent') => void;
+  isSaving: boolean;
+}) => (
+  <div className="space-y-6">
+    <div className="flex items-center gap-4">
+      <Button variant="outline" size="icon" onClick={() => setView('manager')}>
+        <ArrowLeft />
+      </Button>
+      <h2 className="font-headline text-2xl">
+        {composerState.id ? 'Edit Campaign' : 'Create New Campaign'}
+      </h2>
+    </div>
+
+    <Card>
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2">
+          <Users />
+          Recipient Segmentation
+        </CardTitle>
+        <CardDescription>Choose who this email will be sent to.</CardDescription>
+      </CardHeader>
+      <CardContent>
+        <Tabs
+          value={composerState.recipientSelection.type}
+          onValueChange={value =>
+            setComposerState(prev => ({
+              ...prev,
+              recipientSelection: {
+                ...prev.recipientSelection,
+                type: value as any,
+                custom: [],
+                manual: '',
+              },
+            }))
+          }
+        >
+          <TabsList className="grid w-full grid-cols-3">
+            <TabsTrigger value="segment">Segments</TabsTrigger>
+            <TabsTrigger value="custom">Custom List</TabsTrigger>
+            <TabsTrigger value="manual">Manual Entry</TabsTrigger>
+          </TabsList>
+          <TabsContent value="segment" className="pt-4">
+            <Select
+              value={composerState.recipientSelection.segment}
+              onValueChange={value =>
+                setComposerState(prev => ({
+                  ...prev,
+                  recipientSelection: { ...prev.recipientSelection, segment: value },
+                }))
+              }
+            >
+              <SelectTrigger>
+                <SelectValue placeholder="Select a user segment" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Users</SelectItem>
+                <SelectItem value="not-started">
+                  Users who haven't started learning
+                </SelectItem>
+                <SelectItem value="completed-exam">Users with completed exams</SelectItem>
+                <SelectItem value="score-gt-80">Users with exam score > 80%</SelectItem>
+              </SelectContent>
+            </Select>
+          </TabsContent>
+          <TabsContent value="custom" className="pt-4 space-y-4">
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+              <Input
+                placeholder="Search users..."
+                className="pl-10"
+                value={userSearchTerm}
+                onChange={e => setUserSearchTerm(e.target.value)}
+              />
+            </div>
+            <ScrollArea className="h-64 rounded-md border">
+              <div className="p-4">
+                {filteredUsers.map(user => (
+                  <div
+                    key={user.id}
+                    className="flex items-center gap-3 p-2 rounded-md hover:bg-secondary"
+                  >
+                    <Checkbox
+                      id={`user-${user.id}`}
+                      checked={composerState.recipientSelection.custom.includes(user.id)}
+                      onCheckedChange={() => handleCustomUserSelect(user.id)}
+                    />
+                    <Label
+                      htmlFor={`user-${user.id}`}
+                      className="flex-1 flex items-center gap-2 cursor-pointer"
+                    >
+                      <Avatar className="h-8 w-8">
+                        <AvatarImage src={user.avatar} />
+                        <AvatarFallback>{user.name.charAt(0)}</AvatarFallback>
+                      </Avatar>
+                      <div>
+                        <div className="font-medium">{user.name}</div>
+                        <div className="text-xs text-muted-foreground">{user.email}</div>
+                      </div>
+                    </Label>
+                  </div>
+                ))}
+              </div>
+            </ScrollArea>
+            <p className="text-sm text-muted-foreground">
+              {composerState.recipientSelection.custom.length} user(s) selected.
+            </p>
+          </TabsContent>
+          <TabsContent value="manual" className="pt-4">
+            <Label htmlFor="manual-emails">Manual Email Entry</Label>
+            <Textarea
+              id="manual-emails"
+              placeholder="Enter email addresses, separated by commas"
+              rows={8}
+              value={composerState.recipientSelection.manual}
+              onChange={e =>
+                setComposerState(prev => ({
+                  ...prev,
+                  recipientSelection: {
+                    ...prev.recipientSelection,
+                    manual: e.target.value,
+                  },
+                }))
+              }
+            />
+            <p className="text-sm text-muted-foreground mt-2">Emails should be comma-separated.</p>
+          </TabsContent>
+        </Tabs>
+      </CardContent>
+    </Card>
+
+    <Card>
+      <CardHeader>
+        <div className="flex items-center justify-between">
+          <div>
+            <CardTitle className="flex items-center gap-2">
+              <FileText />
+              Email Content
+            </CardTitle>
+            <CardDescription>
+              Write your email manually or generate it with AI.
+            </CardDescription>
+          </div>
+          <Button
+            variant="outline"
+            onClick={() => {
+              setAiFormState({
+                emailType: 'newsletter',
+                tone: 'friendly',
+                topic: '',
+                additionalInstructions: '',
+              });
+              setAiModalOpen(true);
+            }}
+          >
+            <Wand2 className="mr-2 h-4 w-4" />
+            Generate with AI
+          </Button>
+        </div>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <div className="grid gap-2">
+          <Label htmlFor="subject">Subject Line</Label>
+          <Input
+            id="subject"
+            placeholder="Your campaign subject"
+            value={composerState.subject}
+            onChange={e =>
+              setComposerState(prev => ({ ...prev, subject: e.target.value }))
+            }
+          />
+        </div>
+        <div className="grid gap-2">
+          <Label htmlFor="body">Content Body (Markdown supported)</Label>
+          <Textarea
+            id="body"
+            rows={15}
+            placeholder="Write your email here..."
+            value={composerState.body}
+            onChange={e => setComposerState(prev => ({ ...prev, body: e.target.value }))}
+          />
+        </div>
+      </CardContent>
+    </Card>
+
+    <Card>
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2">
+          <Calendar />
+          Scheduling & Sending
+        </CardTitle>
+        <CardDescription>Choose when to send your campaign.</CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <div className="flex items-center space-x-2">
+          <Switch
+            id="send-now"
+            checked={composerState.sendNow}
+            onCheckedChange={checked =>
+              setComposerState(prev => ({ ...prev, sendNow: checked }))
+            }
+          />
+          <Label htmlFor="send-now">
+            {composerState.sendNow ? 'Send Immediately' : 'Schedule for Later'}
+          </Label>
+        </div>
+        {!composerState.sendNow && (
+          <Input
+            type="datetime-local"
+            value={format(new Date(composerState.scheduledAt), "yyyy-MM-dd'T'HH:mm")}
+            onChange={e =>
+              setComposerState(prev => ({
+                ...prev,
+                scheduledAt: new Date(e.target.value),
+              }))
+            }
+            min={format(new Date(), "yyyy-MM-dd'T'HH:mm")}
+          />
+        )}
+      </CardContent>
+      <CardFooter className="flex justify-end gap-2">
+        <Button
+          variant="outline"
+          onClick={() => handleSave('Draft')}
+          disabled={isSaving}
+        >
+          <Save className="mr-2 h-4 w-4" />
+          Save Draft
+        </Button>
+        {composerState.sendNow ? (
+          <Button onClick={() => handleSave('Sent')} disabled={isSaving}>
+            {isSaving ? (
+              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+            ) : (
+              <Send className="mr-2 h-4 w-4" />
+            )}
+            {isSaving ? 'Sending...' : 'Send Now'}
+          </Button>
+        ) : (
+          <Button onClick={() => handleSave('Scheduled')} disabled={isSaving}>
+            {isSaving ? (
+              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+            ) : (
+              <Calendar className="mr-2 h-4 w-4" />
+            )}
+            {isSaving ? 'Scheduling...' : 'Schedule'}
+          </Button>
+        )}
+      </CardFooter>
+    </Card>
+  </div>
+);
 
 export default function EmailsPage() {
   const [view, setView] = useState<ViewMode>('manager');
@@ -120,13 +522,15 @@ export default function EmailsPage() {
   const [campaignToDelete, setCampaignToDelete] = useState<Campaign | null>(null);
   const [userSearchTerm, setUserSearchTerm] = useState('');
   const { toast } = useToast();
-  
+
   // NOTE: In a real app, this status would come from a shared context or backend call.
   // For this demo, we are simulating it with local state.
-  const [emailServiceStatus, setEmailServiceStatus] = useState<ServiceStatus>('operational');
+  const [emailServiceStatus, setEmailServiceStatus] =
+    useState<ServiceStatus>('operational');
 
-
-  const [aiFormState, setAiFormState] = useState<Omit<GenerateEmailCampaignInput, 'targetAudience'>>({
+  const [aiFormState, setAiFormState] = useState<
+    Omit<GenerateEmailCampaignInput, 'targetAudience'>
+  >({
     emailType: 'newsletter',
     tone: 'friendly',
     topic: '',
@@ -160,7 +564,7 @@ export default function EmailsPage() {
       setAiModalOpen(false);
     } catch (error) {
       console.error('Failed to generate email campaign:', error);
-       toast({
+      toast({
         title: 'Generation Failed',
         description: 'Could not generate email content with AI.',
         variant: 'destructive',
@@ -168,12 +572,12 @@ export default function EmailsPage() {
     }
     setIsGenerating(false);
   }, [aiFormState, getRecipientSummary, toast]);
-  
+
   const handleOpenCreate = useCallback(() => {
     setComposerState(getInitialComposerState());
     setView('composer');
   }, []);
-  
+
   const handleOpenEdit = useCallback((campaign: Campaign) => {
     // This is a simplified edit; a real app would need to parse the recipient string
     // and map it back to the selection UI state.
@@ -187,7 +591,7 @@ export default function EmailsPage() {
     });
     setView('composer');
   }, []);
-  
+
   const handleOpenDeleteDialog = useCallback((campaign: Campaign) => {
     setCampaignToDelete(campaign);
     setDeleteDialogOpen(true);
@@ -195,7 +599,7 @@ export default function EmailsPage() {
 
   const handleDeleteCampaign = useCallback(() => {
     if (campaignToDelete) {
-      setCampaigns(campaigns.filter((c) => c.id !== campaignToDelete.id));
+      setCampaigns(campaigns.filter(c => c.id !== campaignToDelete.id));
       setDeleteDialogOpen(false);
       setCampaignToDelete(null);
     }
@@ -203,7 +607,7 @@ export default function EmailsPage() {
 
   const getRecipientCount = useCallback(() => {
     const { type, segment, custom, manual } = composerState.recipientSelection;
-     switch (type) {
+    switch (type) {
       case 'custom':
         return custom.length;
       case 'manual':
@@ -216,65 +620,81 @@ export default function EmailsPage() {
     }
   }, [composerState.recipientSelection]);
 
-  const handleSave = useCallback(async (status: 'Draft' | 'Scheduled' | 'Sent') => {
-    setIsSaving(true);
+  const handleSave = useCallback(
+    async (status: 'Draft' | 'Scheduled' | 'Sent') => {
+      setIsSaving(true);
 
-    if (status === 'Sent') {
-      // Simulate sending email
-      await new Promise(resolve => setTimeout(resolve, 1500)); 
-      
-      // Simulate success/failure
-      const isSuccess = Math.random() > 0.1; // 90% success rate
-      if (isSuccess) {
-        toast({
-          title: "Email Sent Successfully!",
-          description: `Your campaign "${composerState.subject}" was sent to ${getRecipientCount()} recipient(s).`,
-        });
-      } else {
-        toast({
-          title: "Email Send Failed",
-          description: "Could not send the email. Please check your service configuration and try again.",
-          variant: "destructive",
-        });
-        setIsSaving(false);
-        return; // Don't proceed to update local state if sending failed
+      if (status === 'Sent') {
+        // Simulate sending email
+        await new Promise(resolve => setTimeout(resolve, 1500));
+
+        // Simulate success/failure
+        const isSuccess = Math.random() > 0.1; // 90% success rate
+        if (isSuccess) {
+          toast({
+            title: 'Email Sent Successfully!',
+            description: `Your campaign "${
+              composerState.subject
+            }" was sent to ${getRecipientCount()} recipient(s).`,
+          });
+        } else {
+          toast({
+            title: 'Email Send Failed',
+            description:
+              'Could not send the email. Please check your service configuration and try again.',
+            variant: 'destructive',
+          });
+          setIsSaving(false);
+          return; // Don't proceed to update local state if sending failed
+        }
       }
-    }
 
-    const recipientsSummary = getRecipientSummary();
-    const campaignData = {
-      subject: composerState.subject,
-      body: composerState.body,
-      recipients: recipientsSummary,
-      status,
-      date: status === 'Draft' ? 'N/A' : (composerState.sendNow ? new Date() : composerState.scheduledAt).toISOString(),
-    };
-
-    if (composerState.id) {
-      setCampaigns(campaigns.map(c => c.id === composerState.id ? { ...c, ...campaignData } : c));
-    } else {
-      const newCampaign: Campaign = {
-        id: `camp_${Date.now()}`,
-        ...campaignData,
+      const recipientsSummary = getRecipientSummary();
+      const campaignData = {
+        subject: composerState.subject,
+        body: composerState.body,
+        recipients: recipientsSummary,
+        status,
+        date:
+          status === 'Draft'
+            ? 'N/A'
+            : (composerState.sendNow
+                ? new Date()
+                : composerState.scheduledAt
+              ).toISOString(),
       };
-      setCampaigns(c => [newCampaign, ...c]);
-    }
-    
-    setIsSaving(false);
-    setView('manager');
-  }, [composerState, campaigns, getRecipientCount, getRecipientSummary, toast]);
 
-  const recipientLabels: {[key: string]: string} = useMemo(() => ({
-    "all": "All Users",
-    "not-started": "Users who haven't started",
-    "completed-exam": "Users with completed exams",
-    "score-gt-80": "High-scoring users (>80%)",
-  }), []);
+      if (composerState.id) {
+        setCampaigns(campaigns.map(c => (c.id === composerState.id ? { ...c, ...campaignData } : c)));
+      } else {
+        const newCampaign: Campaign = {
+          id: `camp_${Date.now()}`,
+          ...campaignData,
+        };
+        setCampaigns(c => [newCampaign, ...c]);
+      }
+
+      setIsSaving(false);
+      setView('manager');
+    },
+    [composerState, campaigns, getRecipientCount, getRecipientSummary, toast]
+  );
+
+  const recipientLabels: { [key: string]: string } = useMemo(
+    () => ({
+      all: 'All Users',
+      'not-started': "Users who haven't started",
+      'completed-exam': 'Users with completed exams',
+      'score-gt-80': 'High-scoring users (>80%)',
+    }),
+    []
+  );
 
   const filteredUsers = useMemo(() => {
-    return allUsers.filter(user => 
-      user.name.toLowerCase().includes(userSearchTerm.toLowerCase()) ||
-      user.email.toLowerCase().includes(userSearchTerm.toLowerCase())
+    return allUsers.filter(
+      user =>
+        user.name.toLowerCase().includes(userSearchTerm.toLowerCase()) ||
+        user.email.toLowerCase().includes(userSearchTerm.toLowerCase())
     );
   }, [userSearchTerm]);
 
@@ -289,322 +709,149 @@ export default function EmailsPage() {
         recipientSelection: {
           ...prev.recipientSelection,
           custom: newSelection,
-        }
+        },
       };
     });
   }, []);
-  
+
   const currentStatus = statusConfig[emailServiceStatus];
 
-
-  const CampaignManagerView = () => (
-    <Card>
-      <CardHeader>
-        <div className="flex items-start md:items-center justify-between flex-col md:flex-row gap-4">
-          <div>
-            <CardTitle className="font-headline text-2xl flex items-center gap-2">
-              <Mail />
-              Email Campaigns
-            </CardTitle>
-            <CardDescription>
-              View, manage, and create your email campaigns.
-            </CardDescription>
-          </div>
-          <div className="flex items-center gap-4">
-            <Link href="/admin/settings" className="flex items-center gap-2 text-sm font-medium p-2 rounded-md bg-secondary">
-                <div className={cn("h-2.5 w-2.5 rounded-full", currentStatus.className)} />
-                <span>Email Service: {currentStatus.text}</span>
-            </Link>
-            <Button onClick={handleOpenCreate}>
-              <PlusCircle className="mr-2 h-4 w-4" />
-              Create New Campaign
-            </Button>
-          </div>
-        </div>
-      </CardHeader>
-      <CardContent>
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>Campaign</TableHead>
-              <TableHead>Status</TableHead>
-              <TableHead>Recipients</TableHead>
-              <TableHead>Sent/Scheduled</TableHead>
-              <TableHead className="text-right">Actions</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {campaigns.map((campaign) => (
-              <TableRow key={campaign.id}>
-                <TableCell className="font-medium">{campaign.subject}</TableCell>
-                <TableCell>
-                   <Badge variant={
-                      campaign.status === 'Sent' ? 'default' :
-                      campaign.status === 'Draft' ? 'secondary' : 'outline'
-                    }>
-                    {campaign.status}
-                  </Badge>
-                </TableCell>
-                <TableCell>{campaign.recipients}</TableCell>
-                <TableCell>{campaign.date === 'N/A' ? 'N/A' : format(new Date(campaign.date), "PPP p")}</TableCell>
-                <TableCell className="text-right">
-                   <DropdownMenu>
-                      <DropdownMenuTrigger asChild>
-                        <Button variant="ghost" className="h-8 w-8 p-0">
-                          <span className="sr-only">Open menu</span>
-                          <MoreHorizontal className="h-4 w-4" />
-                        </Button>
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent align="end">
-                        <DropdownMenuItem onClick={() => handleOpenEdit(campaign)}>
-                          <Edit className="mr-2 h-4 w-4" />
-                          Edit
-                        </DropdownMenuItem>
-                         <DropdownMenuSeparator />
-                        <DropdownMenuItem className="text-destructive focus:text-destructive" onClick={() => handleOpenDeleteDialog(campaign)}>
-                          <Trash2 className="mr-2 h-4 w-4" />
-                          Delete
-                        </DropdownMenuItem>
-                      </DropdownMenuContent>
-                    </DropdownMenu>
-                </TableCell>
-              </TableRow>
-            ))}
-          </TableBody>
-        </Table>
-      </CardContent>
-    </Card>
-  );
-
-  const ComposerView = () => (
-    <div className="space-y-6">
-      <div className="flex items-center gap-4">
-        <Button variant="outline" size="icon" onClick={() => setView('manager')}>
-          <ArrowLeft />
-        </Button>
-        <h2 className="font-headline text-2xl">{composerState.id ? 'Edit Campaign' : 'Create New Campaign'}</h2>
-      </div>
-
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Users />
-            Recipient Segmentation
-          </CardTitle>
-          <CardDescription>Choose who this email will be sent to.</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <Tabs 
-            value={composerState.recipientSelection.type}
-            onValueChange={(value) => setComposerState(prev => ({ ...prev, recipientSelection: { ...prev.recipientSelection, type: value as any, custom: [], manual: '' }}))}
-          >
-            <TabsList className="grid w-full grid-cols-3">
-              <TabsTrigger value="segment">Segments</TabsTrigger>
-              <TabsTrigger value="custom">Custom List</TabsTrigger>
-              <TabsTrigger value="manual">Manual Entry</TabsTrigger>
-            </TabsList>
-            <TabsContent value="segment" className="pt-4">
-              <Select 
-                value={composerState.recipientSelection.segment} 
-                onValueChange={value => setComposerState(prev => ({...prev, recipientSelection: { ...prev.recipientSelection, segment: value }}))}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Select a user segment" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All Users</SelectItem>
-                  <SelectItem value="not-started">Users who haven't started learning</SelectItem>
-                  <SelectItem value="completed-exam">Users with completed exams</SelectItem>
-                  <SelectItem value="score-gt-80">Users with exam score > 80%</SelectItem>
-                </SelectContent>
-              </Select>
-            </TabsContent>
-            <TabsContent value="custom" className="pt-4 space-y-4">
-              <div className="relative">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                <Input placeholder="Search users..." className="pl-10" value={userSearchTerm} onChange={e => setUserSearchTerm(e.target.value)} />
+  if (view === 'composer') {
+    return (
+      <>
+        <ComposerView
+          composerState={composerState}
+          setComposerState={setComposerState}
+          setView={setView}
+          userSearchTerm={userSearchTerm}
+          setUserSearchTerm={setUserSearchTerm}
+          filteredUsers={filteredUsers}
+          handleCustomUserSelect={handleCustomUserSelect}
+          setAiFormState={setAiFormState}
+          setAiModalOpen={setAiModalOpen}
+          handleSave={handleSave}
+          isSaving={isSaving}
+        />
+        <Dialog open={isAiModalOpen} onOpenChange={setAiModalOpen}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle className="font-headline flex items-center gap-2">
+                <Wand2 /> AI Content Generator
+              </DialogTitle>
+              <DialogDescription>
+                Provide some details and let AI craft your email.
+              </DialogDescription>
+            </DialogHeader>
+            <div className="space-y-4 py-4">
+              <div className="grid gap-2">
+                <Label>Email Type</Label>
+                <Select
+                  value={aiFormState.emailType}
+                  onValueChange={value =>
+                    setAiFormState(prev => ({ ...prev, emailType: value as any }))
+                  }
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="newsletter">Newsletter</SelectItem>
+                    <SelectItem value="update">Update</SelectItem>
+                    <SelectItem value="notification">Notification</SelectItem>
+                    <SelectItem value="invitation">Invitation</SelectItem>
+                    <SelectItem value="congratulations">Congratulations</SelectItem>
+                    <SelectItem value="reminder">Reminder</SelectItem>
+                  </SelectContent>
+                </Select>
               </div>
-              <ScrollArea className="h-64 rounded-md border">
-                <div className="p-4">
-                  {filteredUsers.map(user => (
-                    <div key={user.id} className="flex items-center gap-3 p-2 rounded-md hover:bg-secondary">
-                      <Checkbox id={`user-${user.id}`} checked={composerState.recipientSelection.custom.includes(user.id)} onCheckedChange={() => handleCustomUserSelect(user.id)} />
-                      <Label htmlFor={`user-${user.id}`} className="flex-1 flex items-center gap-2 cursor-pointer">
-                        <Avatar className="h-8 w-8">
-                          <AvatarImage src={user.avatar} />
-                          <AvatarFallback>{user.name.charAt(0)}</AvatarFallback>
-                        </Avatar>
-                        <div>
-                          <div className="font-medium">{user.name}</div>
-                          <div className="text-xs text-muted-foreground">{user.email}</div>
-                        </div>
-                      </Label>
-                    </div>
-                  ))}
-                </div>
-              </ScrollArea>
-              <p className="text-sm text-muted-foreground">{composerState.recipientSelection.custom.length} user(s) selected.</p>
-            </TabsContent>
-            <TabsContent value="manual" className="pt-4">
-              <Label htmlFor="manual-emails">Manual Email Entry</Label>
-              <Textarea 
-                id="manual-emails" 
-                placeholder="Enter email addresses, separated by commas"
-                rows={8}
-                value={composerState.recipientSelection.manual}
-                onChange={e => setComposerState(prev => ({
-                    ...prev,
-                    recipientSelection: {
-                        ...prev.recipientSelection,
-                        manual: e.target.value
-                    }
-                }))}
-              />
-              <p className="text-sm text-muted-foreground mt-2">Emails should be comma-separated.</p>
-            </TabsContent>
-          </Tabs>
-        </CardContent>
-      </Card>
+              <div className="grid gap-2">
+                <Label>Tone</Label>
+                <Select
+                  value={aiFormState.tone}
+                  onValueChange={value =>
+                    setAiFormState(prev => ({ ...prev, tone: value as any }))
+                  }
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="formal">Formal</SelectItem>
+                    <SelectItem value="friendly">Friendly</SelectItem>
+                    <SelectItem value="urgent">Urgent</SelectItem>
+                    <SelectItem value="encouraging">Encouraging</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="grid gap-2">
+                <Label>Key Points / Topic</Label>
+                <Textarea
+                  placeholder="e.g., Announce the launch of our new History learning category."
+                  value={aiFormState.topic}
+                  onChange={e =>
+                    setAiFormState(prev => ({ ...prev, topic: e.target.value }))
+                  }
+                />
+              </div>
+              <div className="grid gap-2">
+                <Label>Additional Instructions</Label>
+                <Textarea
+                  placeholder="e.g., Keep it concise, under 150 words."
+                  value={aiFormState.additionalInstructions}
+                  onChange={e =>
+                    setAiFormState(prev => ({
+                      ...prev,
+                      additionalInstructions: e.target.value,
+                    }))
+                  }
+                />
+              </div>
+            </div>
+            <DialogFooter>
+              <DialogClose asChild>
+                <Button variant="outline">Cancel</Button>
+              </DialogClose>
+              <Button
+                onClick={handleGenerateWithAi}
+                disabled={isGenerating || !aiFormState.topic}
+              >
+                {isGenerating ? <Loader2 className="animate-spin" /> : <Wand2 />}
+                Generate
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+        <AlertDialog open={isDeleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Are you sure?</AlertDialogTitle>
+              <AlertDialogDescription>
+                This will permanently delete the campaign "{campaignToDelete?.subject}". This
+                action cannot be undone.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>Cancel</AlertDialogCancel>
+              <AlertDialogAction
+                onClick={handleDeleteCampaign}
+                className="bg-destructive hover:bg-destructive/90"
+              >
+                Delete
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+      </>
+    );
+  }
 
-      <Card>
-        <CardHeader>
-          <div className="flex items-center justify-between">
-            <div>
-              <CardTitle className="flex items-center gap-2">
-                <FileText />
-                Email Content
-              </CardTitle>
-              <CardDescription>Write your email manually or generate it with AI.</CardDescription>
-            </div>
-            <Button variant="outline" onClick={() => {
-              setAiFormState({ emailType: 'newsletter', tone: 'friendly', topic: '', additionalInstructions: '' });
-              setAiModalOpen(true);
-            }}>
-              <Wand2 className="mr-2 h-4 w-4" />
-              Generate with AI
-            </Button>
-          </div>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="grid gap-2">
-            <Label htmlFor="subject">Subject Line</Label>
-            <Input id="subject" placeholder="Your campaign subject" value={composerState.subject} onChange={e => setComposerState(prev => ({...prev, subject: e.target.value}))} />
-          </div>
-          <div className="grid gap-2">
-            <Label htmlFor="body">Content Body (Markdown supported)</Label>
-            <Textarea id="body" rows={15} placeholder="Write your email here..." value={composerState.body} onChange={e => setComposerState(prev => ({...prev, body: e.target.value}))} />
-          </div>
-        </CardContent>
-      </Card>
-      
-      <Card>
-         <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Calendar />
-            Scheduling & Sending
-          </CardTitle>
-          <CardDescription>Choose when to send your campaign.</CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-            <div className="flex items-center space-x-2">
-              <Switch id="send-now" checked={composerState.sendNow} onCheckedChange={checked => setComposerState(prev => ({...prev, sendNow: checked}))} />
-              <Label htmlFor="send-now">{composerState.sendNow ? 'Send Immediately' : 'Schedule for Later'}</Label>
-            </div>
-            {!composerState.sendNow && (
-              <Input 
-                type="datetime-local" 
-                value={format(new Date(composerState.scheduledAt), "yyyy-MM-dd'T'HH:mm")}
-                onChange={e => setComposerState(prev => ({...prev, scheduledAt: new Date(e.target.value)}))}
-                min={format(new Date(), "yyyy-MM-dd'T'HH:mm")}
-              />
-            )}
-        </CardContent>
-         <CardFooter className="flex justify-end gap-2">
-            <Button variant="outline" onClick={() => handleSave('Draft')} disabled={isSaving}><Save className="mr-2 h-4 w-4" />Save Draft</Button>
-            {composerState.sendNow ? (
-                 <Button onClick={() => handleSave('Sent')} disabled={isSaving}>
-                  {isSaving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Send className="mr-2 h-4 w-4" />}
-                  {isSaving ? 'Sending...' : 'Send Now'}
-                 </Button>
-            ) : (
-                <Button onClick={() => handleSave('Scheduled')} disabled={isSaving}>
-                  {isSaving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Calendar className="mr-2 h-4 w-4" />}
-                  {isSaving ? 'Scheduling...' : 'Schedule'}
-                </Button>
-            )}
-        </CardFooter>
-      </Card>
-
-       <Dialog open={isAiModalOpen} onOpenChange={setAiModalOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle className="font-headline flex items-center gap-2"><Wand2/> AI Content Generator</DialogTitle>
-            <DialogDescription>Provide some details and let AI craft your email.</DialogDescription>
-          </DialogHeader>
-          <div className="space-y-4 py-4">
-            <div className="grid gap-2">
-              <Label>Email Type</Label>
-              <Select value={aiFormState.emailType} onValueChange={value => setAiFormState(prev => ({...prev, emailType: value as any}))}>
-                <SelectTrigger><SelectValue/></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="newsletter">Newsletter</SelectItem>
-                  <SelectItem value="update">Update</SelectItem>
-                  <SelectItem value="notification">Notification</SelectItem>
-                  <SelectItem value="invitation">Invitation</SelectItem>
-                  <SelectItem value="congratulations">Congratulations</SelectItem>
-                  <SelectItem value="reminder">Reminder</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-             <div className="grid gap-2">
-              <Label>Tone</Label>
-              <Select value={aiFormState.tone} onValueChange={value => setAiFormState(prev => ({...prev, tone: value as any}))}>
-                <SelectTrigger><SelectValue/></SelectTrigger>
-                <SelectContent>
-                   <SelectItem value="formal">Formal</SelectItem>
-                  <SelectItem value="friendly">Friendly</SelectItem>
-                  <SelectItem value="urgent">Urgent</SelectItem>
-                  <SelectItem value="encouraging">Encouraging</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="grid gap-2">
-              <Label>Key Points / Topic</Label>
-              <Textarea placeholder="e.g., Announce the launch of our new History learning category." value={aiFormState.topic} onChange={e => setAiFormState(prev => ({...prev, topic: e.target.value}))}/>
-            </div>
-             <div className="grid gap-2">
-              <Label>Additional Instructions</Label>
-              <Textarea placeholder="e.g., Keep it concise, under 150 words." value={aiFormState.additionalInstructions} onChange={e => setAiFormState(prev => ({...prev, additionalInstructions: e.target.value}))}/>
-            </div>
-          </div>
-          <DialogFooter>
-            <DialogClose asChild><Button variant="outline">Cancel</Button></DialogClose>
-            <Button onClick={handleGenerateWithAi} disabled={isGenerating || !aiFormState.topic}>
-              {isGenerating ? <Loader2 className="animate-spin" /> : <Wand2 />}
-              Generate
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-      
-      <AlertDialog open={isDeleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Are you sure?</AlertDialogTitle>
-            <AlertDialogDescription>
-              This will permanently delete the campaign "{campaignToDelete?.subject}". This action cannot be undone.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction onClick={handleDeleteCampaign} className="bg-destructive hover:bg-destructive/90">Delete</AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
-    </div>
+  return (
+    <CampaignManagerView
+      campaigns={campaigns}
+      handleOpenCreate={handleOpenCreate}
+      handleOpenEdit={handleOpenEdit}
+      handleOpenDeleteDialog={handleOpenDeleteDialog}
+      currentStatus={currentStatus}
+    />
   );
-
-  return view === 'manager' ? <CampaignManagerView /> : <ComposerView />;
 }
-
-    
