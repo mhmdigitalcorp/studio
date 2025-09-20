@@ -41,8 +41,10 @@ export default function ExamPage() {
   useEffect(() => {
     if (isListening) {
       setAnswerState('listening');
+    } else if (answerState === 'listening') {
+      setAnswerState('idle');
     }
-  }, [isListening]);
+  }, [isListening, answerState]);
 
   useEffect(() => {
     const shuffled = [...allQuestions].sort(() => 0.5 - Math.random());
@@ -56,23 +58,34 @@ export default function ExamPage() {
   const handleMicClick = useCallback(() => {
     if (isListening) {
       stopListening();
-      setAnswerState('idle');
     } else {
-      setUserAnswer(''); // Clear text when starting to listen
+      setUserAnswer('');
       startListening();
     }
   }, [isListening, startListening, stopListening]);
 
+  // Separate effects for TTS and microphone control
   useEffect(() => {
     if (examState === 'ongoing' && currentQuestion) {
-      speak(currentQuestion.question).then(() => {
-        if (examState === 'ongoing') {
-            handleMicClick();
+      speak(currentQuestion.question).catch(error => {
+        console.error("TTS Error:", error);
+        // Fallback to manual microphone start
+        if (!isListening) {
+          startListening();
         }
       });
     }
-  }, [examState, currentQuestion, speak, handleMicClick]);
+  }, [examState, currentQuestion, speak, isListening, startListening]);
 
+  useEffect(() => {
+    if (examState === 'ongoing' && currentQuestion && !isListening) {
+      const timer = setTimeout(() => {
+        startListening();
+      }, 800); 
+      
+      return () => clearTimeout(timer);
+    }
+  }, [examState, currentQuestion, isListening, startListening]);
 
   const startExam = (mode: ExamMode) => {
     setExamMode(mode);
@@ -117,9 +130,9 @@ export default function ExamPage() {
 
       if (result.isCorrect) {
         setScore(s => ({ ...s, correct: s.correct + 1 }));
-        speak("Correct!");
+        speak("Correct!").catch(console.error);
       } else {
-        speak("Incorrect. " + result.feedback);
+        speak("Incorrect. " + result.feedback).catch(console.error);
         if (examMode === 'learning') {
           setRetryQueue(q => [...q, currentQuestion]);
         }
@@ -250,6 +263,7 @@ export default function ExamPage() {
                         answerState === 'idle' && "bg-secondary text-secondary-foreground"
                       )}
                       disabled={processingState === 'processing'}
+                      aria-label={isListening ? "Stop listening" : "Start listening"}
                   >
                      {processingState === 'processing' ? (
                         <Loader2 className="h-5 w-5 animate-spin" />
