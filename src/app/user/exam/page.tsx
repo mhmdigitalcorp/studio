@@ -148,70 +148,15 @@ export default function ExamPage() {
     loadData();
   }, []);
 
-  // Effect to handle automatic submission
-  useEffect(() => {
-    if (transcript) {
-      setUserAnswer(transcript);
-    }
-  
-    // If we were listening, but now we are not, it means the user stopped talking.
-    if (wasListening.current && !isListening && transcript.trim()) {
-      // If it's a retake prompt, we check for "yes" immediately without debounce.
-      if (interactionState === 'retake_prompt') {
-        const confirmation = transcript.toLowerCase();
-        if (confirmation.includes('yes') || confirmation.includes('okay')) {
-          debouncedSubmit.cancel(); // Cancel any pending submission
-          handleRetryQuestion();
-          return; // Explicitly return to prevent fall-through
-        }
-      }
-      
-      // For regular answers, use the debounced submission.
-      debouncedSubmit(transcript);
-    }
-  
-    // Update the ref to track the listening state for the next render.
-    wasListening.current = isListening;
-  
-  }, [transcript, isListening, interactionState, handleRetryQuestion, debouncedSubmit]);
-
-
-  const handleQuestionSequence = useCallback(async () => {
-    if (!currentQuestion) return;
-    setInteractionState('reading_question');
-    await speak(currentQuestion.question);
-    
-    if (micPermission === 'granted') {
-      setInteractionState('listening');
-      startListening();
-    } else {
-      // Fallback for no mic permission
-      setInteractionState('listening'); 
-    }
-  }, [currentQuestion, speak, startListening, micPermission]);
-
-  useEffect(() => {
-    if (examState === 'ongoing' && interactionState === 'idle') {
-      handleQuestionSequence();
-    }
-  }, [examState, interactionState, handleQuestionSequence]);
-
-  const startExam = (mode: 'learning') => {
-    const categoryQuestions = allQuestions.filter(q => q.category === selectedCategory);
-    const shuffled = [...categoryQuestions].sort(() => 0.5 - Math.random());
-    const selectedQuestions = shuffled.slice(0, 5);
-    setExamQuestions(selectedQuestions);
-    setScore({ correct: 0, total: selectedQuestions.length });
-    setExamMode(mode);
-    setExamState('ongoing');
-    setInteractionState('idle');
-  };
-
   const handleSubmit = useCallback(async () => {
-    // Cancel any pending debounced calls since we are now submitting.
+    // --- STATE GUARD --- 
+    if (interactionState !== 'listening' && interactionState !== 'retake_prompt') {
+      return;
+    }
+    
     debouncedSubmit.cancel();
 
-    if (!userAnswer.trim() || interactionState !== 'listening') return;
+    if (!userAnswer.trim()) return;
     
     stopListening();
     setInteractionState('processing');
@@ -245,9 +190,75 @@ export default function ExamPage() {
       toast({ title: 'Error', description: 'Could not grade answer.', variant: 'destructive' });
       setInteractionState('listening');
     }
-  }, [userAnswer, interactionState, currentQuestion, debouncedSubmit, stopListening, toast, speak, micPermission, startListening]);
+  }, [userAnswer, interactionState, currentQuestion, debouncedSubmit, stopListening, toast, speak, micPermission, startListening, handleNextQuestion]);
 
-  const handleNextQuestion = () => {
+  // Effect to handle automatic submission
+  useEffect(() => {
+    // Update the answer from the speech transcript
+    if (transcript) {
+      setUserAnswer(transcript);
+    }
+  
+    // Handle the core logic: submitting when the user stops speaking
+    if (wasListening.current && !isListening) {
+      // User just stopped speaking
+      const finalTranscript = transcript.trim();
+  
+      // 1. Handle Retry Prompt First
+      if (interactionState === 'retake_prompt') {
+        if (finalTranscript && (finalTranscript.toLowerCase().includes('yes') || finalTranscript.toLowerCase().includes('okay'))) {
+          handleRetryQuestion();
+        }
+        return; // Exit early, we've handled the retry prompt
+      }
+  
+      // 2. Handle Regular Answer Submission
+      // Only submit if we are in the correct state and have an answer
+      if (interactionState === 'listening' && finalTranscript) {
+        // Cancel any pending debounced calls and submit immediately
+        debouncedSubmit.cancel();
+        handleSubmit();
+      }
+    }
+  
+    // Update the ref for the next render
+    wasListening.current = isListening;
+  // Add all necessary dependencies for the linter
+  }, [transcript, isListening, interactionState, handleRetryQuestion, handleSubmit, debouncedSubmit]);
+
+
+  const handleQuestionSequence = useCallback(async () => {
+    if (!currentQuestion) return;
+    setInteractionState('reading_question');
+    await speak(currentQuestion.question);
+    
+    if (micPermission === 'granted') {
+      setInteractionState('listening');
+      startListening();
+    } else {
+      // Fallback for no mic permission
+      setInteractionState('listening'); 
+    }
+  }, [currentQuestion, speak, startListening, micPermission]);
+
+  useEffect(() => {
+    if (examState === 'ongoing' && interactionState === 'idle') {
+      handleQuestionSequence();
+    }
+  }, [examState, interactionState, handleQuestionSequence]);
+
+  const startExam = (mode: 'learning') => {
+    const categoryQuestions = allQuestions.filter(q => q.category === selectedCategory);
+    const shuffled = [...categoryQuestions].sort(() => 0.5 - Math.random());
+    const selectedQuestions = shuffled.slice(0, 5);
+    setExamQuestions(selectedQuestions);
+    setScore({ correct: 0, total: selectedQuestions.length });
+    setExamMode(mode);
+    setExamState('ongoing');
+    setInteractionState('idle');
+  };
+
+  const handleNextQuestion = useCallback(() => {
     setUserAnswer('');
     setFeedback(null);
     if (currentQuestionIndex < examQuestions.length - 1) {
@@ -256,7 +267,7 @@ export default function ExamPage() {
     } else {
       setExamState('finished');
     }
-  };
+  }, [currentQuestionIndex, examQuestions.length]);
 
   const handleRetryQuestion = useCallback(() => {
     setUserAnswer('');
@@ -267,9 +278,6 @@ export default function ExamPage() {
   const handleMicClick = () => {
     if (isListening) {
        stopListening();
-       if (userAnswer.trim()) {
-         handleSubmit(); // Manually trigger submit if mic is stopped and there is an answer
-       }
     } else {
       if ((interactionState === 'listening' || interactionState === 'retake_prompt') && micPermission === 'granted') {
         startListening();
@@ -425,10 +433,6 @@ export default function ExamPage() {
                 </Button>
              )}
           </div>
-          <Button onClick={handleSubmit} disabled={(interactionState !== 'listening' && interactionState !== 'retake_prompt') || !userAnswer.trim() || isSpeaking} className="w-full">
-            <Send className="mr-2 h-4 w-4" />
-            Submit Answer
-          </Button>
         </CardContent>
         {feedback && (
           <CardFooter>
