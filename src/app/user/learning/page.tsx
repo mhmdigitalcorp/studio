@@ -4,25 +4,23 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Question } from '@/lib/data';
 import { generateVoiceLessons } from '@/ai/flows/generate-voice-lessons';
-import { Play, Pause, SkipForward, SkipBack, Volume2, Loader2, Info, Mic } from 'lucide-react';
+import { Play, Pause, SkipForward, SkipBack, Volume2, Loader2, Info, Mic, ArrowLeft } from 'lucide-react';
 import { useSpeechRecognition } from '@/hooks/use-speech-recognition';
 import { cn } from '@/lib/utils';
 import _ from 'lodash';
+import { manageQuestion } from '@/ai/flows/manage-question';
 
 
 type LearningState = 'category_selection' | 'lesson';
 
-// Mock data fetching function. In a real app, this would be `onSnapshot` from Firebase.
+// Fetches live questions from the backend
 const fetchQuestions = async (): Promise<Question[]> => {
-  // Simulate API call
-  await new Promise(res => setTimeout(res, 500));
-  return [
-    { id: "1", question: "What is the primary function of the mitochondria in a cell?", answer: "The primary function of mitochondria is to generate most of the cell's supply of adenosine triphosphate (ATP), used as a source of chemical energy.", category: "Biology", remarks: "Key concept for cellular respiration." },
-    { id: "2", question: "Who wrote 'To Kill a Mockingbird'?", answer: "Harper Lee wrote 'To Kill a Mockingbird'.", category: "Literature", remarks: "Published in 1960, a classic of modern American literature." },
-    { id: "3", question: "What is the formula for calculating the area of a circle?", answer: "The formula for the area of a circle is A = πr², where r is the radius of the circle.", category: "Mathematics", remarks: "Pi (π) is approximately 3.14159." },
-    { id: "4", question: "What year did the first human land on the moon?", answer: "The first human landed on the moon in 1969.", category: "History", remarks: "Apollo 11 mission with Neil Armstrong and Buzz Aldrin." },
-    { id: "5", question: "What is the capital of Japan?", answer: "The capital of Japan is Tokyo.", category: "Geography", remarks: "Largest metropolitan area in the world." },
-  ];
+  const { success, questions } = await manageQuestion({ action: 'getAll' });
+  if (success && questions) {
+    return questions;
+  }
+  console.error('Failed to fetch questions for learning page.');
+  return [];
 };
 
 
@@ -177,11 +175,13 @@ export default function LearningPage() {
                     <p className="text-muted-foreground">Choose a topic to start your voice-driven learning session.</p>
                 </CardHeader>
                 <CardContent className="grid grid-cols-2 md:grid-cols-3 gap-4">
-                    {categories.map(category => (
+                    {categories.length > 0 ? categories.map(category => (
                         <Button key={category} variant="outline" className="h-24 text-lg" onClick={() => selectCategory(category)}>
                             {category}
                         </Button>
-                    ))}
+                    )) : (
+                      <p className="text-muted-foreground col-span-full text-center">No categories found. Please add questions in the admin panel.</p>
+                    )}
                 </CardContent>
             </Card>
         </div>

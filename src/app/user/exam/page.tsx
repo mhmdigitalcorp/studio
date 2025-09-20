@@ -12,22 +12,20 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { cn } from '@/lib/utils';
 import { useSpeechRecognition } from '@/hooks/use-speech-recognition';
 import { useTTS } from '@/hooks/use-tts';
+import { manageQuestion } from '@/ai/flows/manage-question';
 
 type ExamState = 'category_selection' | 'mode_selection' | 'ongoing' | 'feedback' | 'finished';
 type ExamMode = 'learning' | 'exam';
 type AnswerState = 'idle' | 'listening' | 'processing' | 'correct' | 'incorrect';
 
-// Mock data fetching function. In a real app, this would be `onSnapshot` from Firebase.
+// Fetches live questions from the backend
 const fetchQuestions = async (): Promise<Question[]> => {
-  // Simulate API call
-  await new Promise(res => setTimeout(res, 500));
-  return [
-    { id: "1", question: "What is the primary function of the mitochondria in a cell?", answer: "The primary function of mitochondria is to generate most of the cell's supply of adenosine triphosphate (ATP), used as a source of chemical energy.", category: "Biology", remarks: "Key concept for cellular respiration." },
-    { id: "2", question: "Who wrote 'To Kill a Mockingbird'?", answer: "Harper Lee wrote 'To Kill a Mockingbird'.", category: "Literature", remarks: "Published in 1960, a classic of modern American literature." },
-    { id: "3", question: "What is the formula for calculating the area of a circle?", answer: "The formula for the area of a circle is A = πr², where r is the radius of the circle.", category: "Mathematics", remarks: "Pi (π) is approximately 3.14159." },
-    { id: "4", question: "What year did the first human land on the moon?", answer: "The first human landed on the moon in 1969.", category: "History", remarks: "Apollo 11 mission with Neil Armstrong and Buzz Aldrin." },
-    { id: "5", question: "What is the capital of Japan?", answer: "The capital of Japan is Tokyo.", category: "Geography", remarks: "Largest metropolitan area in the world." },
-  ];
+  const { success, questions } = await manageQuestion({ action: 'getAll' });
+  if (success && questions) {
+    return questions;
+  }
+  console.error('Failed to fetch questions for exam page.');
+  return [];
 };
 
 export default function ExamPage() {
@@ -78,7 +76,7 @@ export default function ExamPage() {
     if (selectedCategory) {
       const categoryQuestions = allQuestions.filter(q => q.category === selectedCategory);
       const shuffled = [...categoryQuestions].sort(() => 0.5 - Math.random());
-      const selectedQuestions = shuffled.slice(0, 5);
+      const selectedQuestions = shuffled.slice(0, 5); // Limit to 5 questions for an exam
       setExamQuestions(selectedQuestions);
       setScore(s => ({...s, total: selectedQuestions.length}));
     }
@@ -219,7 +217,7 @@ export default function ExamPage() {
             <CardDescription>Choose a topic for your exam or learning session.</CardDescription>
           </CardHeader>
           <CardContent className="grid grid-cols-2 md:grid-cols-3 gap-4">
-            {categories.map(category => (
+            {categories.length > 0 ? categories.map(category => (
               <Button 
                 key={category} 
                 variant="outline" 
@@ -231,7 +229,9 @@ export default function ExamPage() {
               >
                 {category}
               </Button>
-            ))}
+            )) : (
+              <p className="text-muted-foreground col-span-full text-center">No categories found. Please add questions in the admin panel.</p>
+            )}
           </CardContent>
         </Card>
       </div>
@@ -272,7 +272,12 @@ export default function ExamPage() {
   }
 
   if (examQuestions.length === 0) {
-    return <div className="flex justify-center items-center h-full"><Loader2 className="h-8 w-8 animate-spin" /></div>;
+    return (
+      <div className="flex flex-col justify-center items-center h-full gap-4 text-center">
+        <p className="text-muted-foreground">There are no questions available for the '{selectedCategory}' category.</p>
+        <Button onClick={() => setExamState('category_selection')}>Choose a Different Category</Button>
+      </div>
+    );
   }
   
   if (examState === 'finished') {
