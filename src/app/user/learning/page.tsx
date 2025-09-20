@@ -1,7 +1,7 @@
 'use client';
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
+import { Card, CardContent, CardFooter, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Question } from '@/lib/data';
 import { generateVoiceLessons } from '@/ai/flows/generate-voice-lessons';
 import { Play, Pause, SkipForward, SkipBack, Volume2, Loader2, Info, Mic, History, FileQuestion, BookCopy, Code, BookOpen } from 'lucide-react';
@@ -41,6 +41,7 @@ export default function LearningPage() {
   const [loadingAudio, setLoadingAudio] = useState<'question' | 'answer' | null>(null);
   const [isPlayingSequence, setIsPlayingSequence] = useState(false);
   
+  // Use ref for currentAudio to avoid dependency issues
   const currentAudioRef = useRef<HTMLAudioElement | null>(null);
   const audioCache = useRef<Record<string, { questionAudio: string; answerAudio: string }>>({});
 
@@ -59,9 +60,11 @@ export default function LearningPage() {
     loadData();
   }, []);
 
+  // FIXED: playAudio function without circular dependencies
   const playAudio = useCallback(async (type: 'question' | 'answer'): Promise<void> => {
     if (loadingAudio || !currentQuestion) return;
 
+    // Stop any currently playing audio using the ref
     if (currentAudioRef.current) {
       currentAudioRef.current.pause();
       currentAudioRef.current = null;
@@ -115,8 +118,9 @@ export default function LearningPage() {
       setLoadingAudio(null);
       throw error;
     }
-  }, [currentQuestion, loadingAudio]);
+  }, [currentQuestion, loadingAudio]); // REMOVED currentAudio from dependencies
 
+  // FIXED: playSequence function
   const playSequence = useCallback(async (): Promise<void> => {
     if (isPlayingSequence || !currentQuestion) return;
     
@@ -145,14 +149,17 @@ export default function LearningPage() {
     }
   }, [isPlayingSequence, currentQuestion, playAudio]);
 
+  // FIXED: Stable handler functions
   const handlePlayPause = useCallback(async (): Promise<void> => {
     if (isPlaying) {
+      // Pause current audio
       if (currentAudioRef.current) {
         currentAudioRef.current.pause();
         setIsPlaying(false);
         setIsPlayingSequence(false);
       }
     } else {
+      // Start playing sequence
       await playSequence();
     }
   }, [isPlaying, playSequence]);
@@ -169,6 +176,7 @@ export default function LearningPage() {
     setCurrentIndex(i => (i - 1 + (questions.length || 1)) % (questions.length || 1));
   }, 300), [questions.length]);
 
+  // Voice commands handler
   useEffect(() => {
     if (transcript) {
       const command = transcript.toLowerCase().trim();
@@ -190,6 +198,7 @@ export default function LearningPage() {
     }
   }, [transcript, handleNext, handlePrev, handleRepeat, handlePlayPause]);
 
+  // Cleanup effects
   useEffect(() => {
     return () => {
       if (currentAudioRef.current) {
@@ -199,6 +208,7 @@ export default function LearningPage() {
   }, []);
 
   useEffect(() => {
+    // Reset audio when question changes
     if (currentAudioRef.current) {
       currentAudioRef.current.pause();
       setIsPlaying(false);
