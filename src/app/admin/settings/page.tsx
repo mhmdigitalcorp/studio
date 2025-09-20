@@ -53,6 +53,7 @@ export default function SettingsPage() {
   const [emailStatus, setEmailStatus] = useState<ServiceStatus>('not-configured');
   const [isEmailEnabled, setIsEmailEnabled] = useState(true);
   const [isTestingEmail, setIsTestingEmail] = useState(false);
+  const [fromEmail, setFromEmail] = useState('noreply@learnflow.app');
   
   const [aiApiKey, setAiApiKey] = useState('');
   const [aiStatus, setAiStatus] = useState<ServiceStatus>('not-configured');
@@ -82,7 +83,8 @@ export default function SettingsPage() {
   };
 
   const handleSaveConfiguration = () => {
-    // Here you would call a secure backend function to save the keys
+    // This function would typically save to a secure backend.
+    // Here we are just updating the local state to reflect the changes.
     if (emailService !== 'none') {
         setEmailStatus('operational');
         toast({
@@ -105,7 +107,7 @@ export default function SettingsPage() {
     try {
         const result = await testEmailService({
             service: emailService,
-            recipient: 'admin@learnflow.app'
+            recipient: fromEmail
         });
 
         if (result.success) {
@@ -343,7 +345,13 @@ export default function SettingsPage() {
             {(emailService === 'sendgrid' || emailService === 'smtp') && (
               <div className="space-y-2">
                 <Label htmlFor="from-email">Default 'From' Email</Label>
-                <Input id="from-email" type="email" placeholder="noreply@learnflow.app" />
+                <Input 
+                  id="from-email" 
+                  type="email" 
+                  placeholder="noreply@learnflow.app" 
+                  value={fromEmail}
+                  onChange={(e) => setFromEmail(e.target.value)}
+                />
               </div>
             )}
           </div>
