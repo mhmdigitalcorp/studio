@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import {
   Card,
   CardContent,
@@ -43,11 +43,18 @@ export default function UserProfilePage() {
   const [name, setName] = useState('');
   const [phone, setPhone] = useState('');
   const [isSaving, setIsSaving] = useState(false);
+  const [isRefreshing, setIsRefreshing] = useState(true);
 
   // Fetch fresh user data when the page loads
-  useEffect(() => {
-    refreshUser();
+  const loadProfile = useCallback(async () => {
+    setIsRefreshing(true);
+    await refreshUser();
+    setIsRefreshing(false);
   }, [refreshUser]);
+
+  useEffect(() => {
+    loadProfile();
+  }, [loadProfile]);
 
   useEffect(() => {
     if (currentUser) {
@@ -80,7 +87,7 @@ export default function UserProfilePage() {
     }
   };
 
-  if (authLoading) {
+  if (authLoading || isRefreshing) {
     return (
       <div className="flex justify-center items-center h-64">
         <Loader2 className="h-8 w-8 animate-spin" />
@@ -245,12 +252,4 @@ export default function UserProfilePage() {
                 <AlertTitle>Microphone Access</AlertTitle>
                 <AlertDescription>
                   Microphone access will be requested when you start an exam.
-                </AlertDescription>
-              </Alert>
-            )}
-          </CardContent>
-        </Card>
-      </div>
-    </div>
-  );
-}
+                </
