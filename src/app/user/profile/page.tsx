@@ -1,5 +1,6 @@
 'use client';
 
+import { useState, useEffect } from 'react';
 import {
   Card,
   CardContent,
@@ -8,7 +9,7 @@ import {
   CardTitle,
 } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { User, Save, History, Mic, MicOff } from 'lucide-react';
+import { User, Save, History, Mic, MicOff, Loader2 } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
@@ -24,15 +25,74 @@ import {
 import { Progress } from '@/components/ui/progress';
 import { useSpeechRecognition } from '@/hooks/use-speech-recognition';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
+import { useAuth } from '@/context/AuthContext';
+import { useToast } from '@/hooks/use-toast';
+import { manageUser } from '@/ai/flows/manage-user';
 
 const examHistory = [
-  { date: '2024-07-20', score: 92, topics: 'Biology, History' },
-  { date: '2024-07-15', score: 85, topics: 'Mathematics' },
-  { date: '2024-07-10', score: 78, topics: 'Literature, Art' },
+  { date: '2024-07-20', score: 92, topics: 'History, Science' },
+  { date: '2024-07-15', score: 85, topics: 'General Knowledge' },
+  { date: '2024-07-10', score: 78, topics: 'Technology' },
 ];
 
 export default function UserProfilePage() {
+  const { currentUser, loading: authLoading, refreshUser } = useAuth();
   const { micPermission, browserSupportsSpeechRecognition } = useSpeechRecognition();
+  const { toast } = useToast();
+
+  const [name, setName] = useState('');
+  const [phone, setPhone] = useState('');
+  const [isSaving, setIsSaving] = useState(false);
+
+  useEffect(() => {
+    if (currentUser) {
+      setName(currentUser.name || '');
+      setPhone(currentUser.phone || '');
+    }
+  }, [currentUser]);
+  
+  const getInitials = (name: string | null) => {
+    if (!name) return 'U';
+    return name.split(' ').map(n => n[0]).join('');
+  }
+
+  const handleUpdateProfile = async () => {
+    if (!currentUser) return;
+    
+    setIsSaving(true);
+    const result = await manageUser({
+      action: 'update',
+      userId: currentUser.uid,
+      userData: { name, phone },
+    });
+    setIsSaving(false);
+
+    if (result.success) {
+      toast({ title: 'Profile Updated', description: 'Your information has been saved.' });
+      await refreshUser();
+    } else {
+      toast({ title: 'Update Failed', description: result.message, variant: 'destructive' });
+    }
+  };
+
+  if (authLoading) {
+    return (
+      <div className="flex justify-center items-center h-64">
+        <Loader2 className="h-8 w-8 animate-spin" />
+      </div>
+    );
+  }
+  
+  if (!currentUser) {
+    return (
+      <Card>
+        <CardHeader>
+          <CardTitle>Not Logged In</CardTitle>
+          <CardDescription>Please log in to view your profile.</CardDescription>
+        </CardHeader>
+      </Card>
+    );
+  }
 
   return (
     <div className="grid gap-8 md:grid-cols-3">
@@ -50,8 +110,8 @@ export default function UserProfilePage() {
           <CardContent className="space-y-6">
             <div className="flex flex-col items-center gap-4">
               <Avatar className="h-24 w-24">
-                <AvatarImage src="https://i.pravatar.cc/150?u=a042581f4e29026024d" />
-                <AvatarFallback>U</AvatarFallback>
+                <AvatarImage src={currentUser.avatar} />
+                <AvatarFallback>{getInitials(currentUser.name)}</AvatarFallback>
               </Avatar>
               <Button variant="outline" size="sm">
                 Change Picture
@@ -60,21 +120,25 @@ export default function UserProfilePage() {
             <div className="space-y-4">
               <div className="grid gap-2">
                 <Label htmlFor="name">Full Name</Label>
-                <Input id="name" defaultValue="Alice Johnson" />
+                <Input id="name" value={name} onChange={e => setName(e.target.value)} disabled={isSaving}/>
+              </div>
+              <div className="grid gap-2">
+                <Label htmlFor="phone">Phone Number</Label>
+                <Input id="phone" value={phone} onChange={e => setPhone(e.target.value)} disabled={isSaving}/>
               </div>
               <div className="grid gap-2">
                 <Label htmlFor="email">Email Address</Label>
                 <Input
                   id="email"
                   type="email"
-                  defaultValue="alice.j@example.com"
+                  value={currentUser.email || ''}
                   disabled
                 />
               </div>
             </div>
-            <Button className="w-full">
-              <Save className="mr-2 h-4 w-4" />
-              Update Profile
+            <Button className="w-full" onClick={handleUpdateProfile} disabled={isSaving}>
+              {isSaving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
+              {isSaving ? 'Saving...' : 'Update Profile'}
             </Button>
           </CardContent>
         </Card>
@@ -94,8 +158,8 @@ export default function UserProfilePage() {
           <CardContent>
             <h4 className="font-semibold mb-2">Overall Progress</h4>
             <div className="flex items-center gap-4 mb-6">
-              <Progress value={88} className="flex-1 h-3" />
-              <span className="font-bold text-lg text-primary">88%</span>
+              <Progress value={currentUser.progress || 0} className="flex-1 h-3" />
+              <span className="font-bold text-lg text-primary">{currentUser.progress || 0}%</span>
             </div>
 
             <Separator className="my-6" />
@@ -168,7 +232,7 @@ export default function UserProfilePage() {
                 <AlertTitle>Microphone Active</AlertTitle>
                 <AlertDescription>
                   Your microphone is set up correctly for voice interaction.
-                </AlertDescription>
+                </Description>
               </Alert>
             ) : (
                <Alert>
@@ -176,7 +240,7 @@ export default function UserProfilePage() {
                 <AlertTitle>Microphone Access</AlertTitle>
                 <AlertDescription>
                   Microphone access will be requested when you start an exam.
-                </AlertDescription>
+                </Description>
               </Alert>
             )}
           </CardContent>

@@ -10,7 +10,7 @@ export type User = {
   id: string;
   name: string;
   email: string;
-  phone: string;
+  phone?: string;
   avatar: string;
   status: 'Active' | 'Inactive';
   lastLogin: string;
@@ -49,4 +49,5 @@ export const todos: Todo[] = [
     { id: 2, task: "Review user feedback from last week's survey", completed: false, priority: "medium", dueDate: new Date(Date.now() + 2 * 24 * 60 * 60 * 1000).toISOString(), category: "Administration", subtasks: [] },
     { id: 3, task: "Draft newsletter for new feature launch", completed: true, priority: "medium", dueDate: new Date(Date.now() - 1 * 24 * 60 * 60 * 1000).toISOString(), category: "Communication", subtasks: [] },
     { id: 4, task: "Add 10 new questions to the Biology category", completed: false, priority: "low", dueDate: new Date(Date.now() + 5 * 24 * 60 * 60 * 1000).toISOString(), category: "Content", subtasks: [] },
-    { id: 5, task: "Debug user login issue reported on mobile", completed: false, priority: "high", dueDate: new Date(Date.now() - 2 * 24 * 60
+    { id: 5, task: "Debug user login issue reported on mobile", completed: false, priority: "high", dueDate: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString(), category: "Content", subtasks: [] }
+];

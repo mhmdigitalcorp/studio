@@ -1,6 +1,6 @@
 // src/context/AuthContext.tsx
 'use client';
-import { createContext, useContext, useEffect, useState, ReactNode } from 'react';
+import { createContext, useContext, useEffect, useState, ReactNode, useCallback } from 'react';
 import { 
   onAuthStateChanged, 
   User as FirebaseUser, 
@@ -24,6 +24,8 @@ interface User extends DocumentData {
   lastLogin?: string;
   score?: number;
   progress?: number;
+  phone?: string;
+  avatar?: string;
 }
 
 interface AuthContextType {
@@ -32,6 +34,7 @@ interface AuthContextType {
   signUp: (credentials: { email: string; password: string; name: string; }) => Promise<any>;
   signIn: (email: string, pass: string) => Promise<any>;
   logOut: () => Promise<any>;
+  refreshUser: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -41,25 +44,31 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [loading, setLoading] = useState(true);
   const router = useRouter();
 
+  const fetchUserData = useCallback(async (user: FirebaseUser) => {
+    const userDoc = await getDoc(doc(db, 'users', user.uid));
+    if (userDoc.exists()) {
+      setCurrentUser({ uid: user.uid, ...userDoc.data() } as User);
+    } else {
+        // This case might happen if the Firestore doc creation fails after signup
+        // Or if a user is authenticated but doesn't have a user record
+         const tempUser: User = {
+          uid: user.uid,
+          email: user.email,
+          name: user.displayName || 'New User',
+          role: 'user',
+          status: 'Active',
+          lastLogin: new Date().toISOString().split('T')[0],
+          score: 0,
+          progress: 0,
+        };
+        setCurrentUser(tempUser);
+    }
+  }, []);
+
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (user: FirebaseUser | null) => {
       if (user) {
-        const userDoc = await getDoc(doc(db, 'users', user.uid));
-        if (userDoc.exists()) {
-          setCurrentUser({ uid: user.uid, ...userDoc.data() } as User);
-        } else {
-             const tempUser: User = {
-              uid: user.uid,
-              email: user.email,
-              name: user.displayName || 'New User',
-              role: 'user',
-              status: 'Active',
-              lastLogin: new Date().toISOString().split('T')[0],
-              score: 0,
-              progress: 0,
-            };
-            setCurrentUser(tempUser);
-        }
+        await fetchUserData(user);
       } else {
         setCurrentUser(null);
       }
@@ -67,7 +76,16 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     });
 
     return () => unsubscribe();
-  }, []);
+  }, [fetchUserData]);
+  
+  const refreshUser = async () => {
+    const user = auth.currentUser;
+    if (user) {
+      setLoading(true);
+      await fetchUserData(user);
+      setLoading(false);
+    }
+  };
   
   const signUp = async ({ email, password, name }: {email: string, password: string, name: string}) => {
     try {
@@ -96,6 +114,11 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         throw new Error(result.message);
       }
       
+      // Manually set the current user to avoid waiting for the onAuthStateChanged listener
+      if (result.user) {
+        setCurrentUser({ uid: result.user.id, ...result.user } as User);
+      }
+      
       return userCredential;
     } catch (error: any) {
       console.error("Sign up error:", error);
@@ -116,6 +139,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
   const logOut = () => {
     return signOut(auth).then(() => {
+      setCurrentUser(null);
       router.push('/');
     });
   }
@@ -125,12 +149,13 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     loading,
     signUp,
     signIn,
-    logOut
+    logOut,
+    refreshUser,
   };
 
   return (
     <AuthContext.Provider value={value}>
-      {!loading && children}
+      {children}
     </AuthContext.Provider>
   );
 };
