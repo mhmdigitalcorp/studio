@@ -1,36 +1,28 @@
-
 rules_version = '2';
+
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    // Users Collection Rules
-    match /users/{userId} {
-      // A user can read and update their own profile.
-      allow read, update: if request.auth != null && request.auth.uid == userId;
-      // A user can create their own profile document upon sign-up.
-      allow create: if request.auth != null && request.auth.uid == userId;
-      
-      // Allow admins to read any user document (for the user management screen)
-      allow get: if request.auth != null && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin';
-      allow list: if request.auth != null && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin';
+    // Helper function to get user role
+    function getUserRole(userId) {
+      return get(/databases/$(database)/documents/users/$(userId)).data.role;
     }
 
-    // Questions can be read by anyone, but only written by backend functions (via Admin SDK)
+    // Users can read their own profile, admins can read all.
+    // Users can create their own profile upon sign-up.
+    match /users/{userId} {
+      allow read: if request.auth != null && (request.auth.uid == userId || getUserRole(request.auth.uid) == 'admin');
+      allow create: if request.auth != null && request.auth.uid == userId;
+      allow update: if request.auth != null && request.auth.uid == userId;
+       // Deletes are handled by backend flows with admin privileges
+      allow delete: if false;
+    }
+
+    // Anyone can read questions for learning.
+    // Writes are handled by backend flows with admin privileges.
     match /questions/{questionId} {
       allow read: if true;
-      allow write: if false; // Block client-side writes. Use the bulk-upload flow.
-    }
-
-    // User exam attempts can only be accessed by the user who owns them.
-    match /userExamAttempts/{attemptId} {
-      allow read, write: if request.auth != null && request.auth.uid == resource.data.userId;
-      allow create: if request.auth != null;
-    }
-
-    // TTS Cache is read-only for clients. Only backend can write to it.
-    match /ttsCache/{audioId} {
-      allow read: if true;
-      allow write: if false; // Only Cloud Functions can write via Admin SDK
+      allow write: if false;
     }
   }
 }
