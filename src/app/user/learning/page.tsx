@@ -110,11 +110,11 @@ export default function LearningPage() {
     audio.play();
     setIsPlaying(true);
     audio.onended = () => {
-      setIsPlaying(false);
-      // Optional: auto-play answer after question
-      // if (type === 'question') {
-      //   playAudio('answer');
-      // }
+      if (type === 'question') {
+        playAudio('answer');
+      } else {
+        setIsPlaying(false);
+      }
     };
   };
 
