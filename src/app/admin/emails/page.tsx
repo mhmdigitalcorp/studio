@@ -25,6 +25,9 @@ import {
   Trash2,
   Edit,
   Search,
+  CheckCircle2,
+  AlertTriangle,
+  Settings,
 } from 'lucide-react';
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
@@ -77,8 +80,11 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar';
 import { Checkbox } from '@/components/ui/checkbox';
+import { cn } from '@/lib/utils';
+import Link from 'next/link';
 
 type ViewMode = 'manager' | 'composer';
+type ServiceStatus = 'operational' | 'degraded' | 'not-configured';
 
 const getInitialComposerState = () => ({
   id: null as string | null,
@@ -95,6 +101,13 @@ const getInitialComposerState = () => ({
   scheduledAt: new Date(),
 });
 
+const statusConfig: Record<ServiceStatus, { text: string; className: string; icon: React.ReactNode }> = {
+  'operational': { text: 'Operational', className: 'bg-green-500', icon: <CheckCircle2 className="h-4 w-4" /> },
+  'degraded': { text: 'Degraded', className: 'bg-yellow-500', icon: <AlertTriangle className="h-4 w-4" /> },
+  'not-configured': { text: 'Not Configured', className: 'bg-red-500', icon: <Settings className="h-4 w-4" /> },
+};
+
+
 export default function EmailsPage() {
   const [view, setView] = useState<ViewMode>('manager');
   const [campaigns, setCampaigns] = useState<Campaign[]>(initialCampaigns);
@@ -104,6 +117,11 @@ export default function EmailsPage() {
   const [isDeleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [campaignToDelete, setCampaignToDelete] = useState<Campaign | null>(null);
   const [userSearchTerm, setUserSearchTerm] = useState('');
+  
+  // NOTE: In a real app, this status would come from a shared context or backend call.
+  // For this demo, we are simulating it with local state.
+  const [emailServiceStatus, setEmailServiceStatus] = useState<ServiceStatus>('operational');
+
 
   const [aiFormState, setAiFormState] = useState<Omit<GenerateEmailCampaignInput, 'targetAudience'>>({
     emailType: 'newsletter',
@@ -119,7 +137,7 @@ export default function EmailsPage() {
   const handleGenerateWithAi = async () => {
     setIsGenerating(true);
     try {
-      const result = await generateEmailCampaign({ ...aiFormState, targetAudience: composerState.recipients });
+      const result = await generateEmailCampaign({ ...aiFormState, emailType: aiFormState.emailType, targetAudience: composerState.recipients });
       setComposerState(prev => ({ ...prev, subject: result.subject, body: result.body }));
       setAiModalOpen(false);
     } catch (error) {
@@ -225,11 +243,14 @@ export default function EmailsPage() {
       };
     });
   };
+  
+  const currentStatus = statusConfig[emailServiceStatus];
+
 
   const CampaignManagerView = () => (
     <Card>
       <CardHeader>
-        <div className="flex items-center justify-between">
+        <div className="flex items-start md:items-center justify-between flex-col md:flex-row gap-4">
           <div>
             <CardTitle className="font-headline text-2xl flex items-center gap-2">
               <Mail />
@@ -239,10 +260,16 @@ export default function EmailsPage() {
               View, manage, and create your email campaigns.
             </CardDescription>
           </div>
-          <Button onClick={handleOpenCreate}>
-            <PlusCircle className="mr-2 h-4 w-4" />
-            Create New Campaign
-          </Button>
+          <div className="flex items-center gap-4">
+            <Link href="/admin/settings" className="flex items-center gap-2 text-sm font-medium p-2 rounded-md bg-secondary">
+                <div className={cn("h-2.5 w-2.5 rounded-full", currentStatus.className)} />
+                <span>Email Service: {currentStatus.text}</span>
+            </Link>
+            <Button onClick={handleOpenCreate}>
+              <PlusCircle className="mr-2 h-4 w-4" />
+              Create New Campaign
+            </Button>
+          </div>
         </div>
       </CardHeader>
       <CardContent>
@@ -375,7 +402,7 @@ export default function EmailsPage() {
                 placeholder="Enter email addresses, separated by commas"
                 rows={8}
                 value={composerState.recipientSelection.manual}
-                onChange={e => setComposerState(prev => ({ ...prev, recipientSelection: { ...prev.recipientSelection, manual: e.target.value }}))}
+                onChange={e => setComposerState(prev => ({...prev, recipientSelection: {...prev.recipientSelection, manual: e.target.value}}))}
               />
               <p className="text-sm text-muted-foreground mt-2">Emails should be comma-separated.</p>
             </TabsContent>
