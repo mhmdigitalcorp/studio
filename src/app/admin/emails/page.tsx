@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useCallback } from 'react';
 import {
   Card,
   CardContent,
@@ -133,57 +133,7 @@ export default function EmailsPage() {
     additionalInstructions: '',
   });
 
-  const handleGenerateWithAi = async () => {
-    setIsGenerating(true);
-    try {
-      const targetAudience = getRecipientSummary();
-      const result = await generateEmailCampaign({ ...aiFormState, targetAudience });
-      setComposerState(prev => ({ ...prev, subject: result.subject, body: result.body }));
-      setAiModalOpen(false);
-    } catch (error) {
-      console.error('Failed to generate email campaign:', error);
-       toast({
-        title: 'Generation Failed',
-        description: 'Could not generate email content with AI.',
-        variant: 'destructive',
-      });
-    }
-    setIsGenerating(false);
-  };
-  
-  const handleOpenCreate = () => {
-    setComposerState(getInitialComposerState());
-    setView('composer');
-  };
-  
-  const handleOpenEdit = (campaign: Campaign) => {
-    // This is a simplified edit; a real app would need to parse the recipient string
-    // and map it back to the selection UI state.
-    setComposerState({
-      ...getInitialComposerState(),
-      id: campaign.id,
-      subject: campaign.subject,
-      body: campaign.body,
-      sendNow: campaign.status !== 'Scheduled',
-      scheduledAt: campaign.date !== 'N/A' ? new Date(campaign.date) : new Date(),
-    });
-    setView('composer');
-  };
-  
-  const handleOpenDeleteDialog = (campaign: Campaign) => {
-    setCampaignToDelete(campaign);
-    setDeleteDialogOpen(true);
-  };
-
-  const handleDeleteCampaign = () => {
-    if (campaignToDelete) {
-      setCampaigns(campaigns.filter((c) => c.id !== campaignToDelete.id));
-      setDeleteDialogOpen(false);
-      setCampaignToDelete(null);
-    }
-  };
-
-  const getRecipientSummary = () => {
+  const getRecipientSummary = useCallback(() => {
     const { type, segment, custom, manual } = composerState.recipientSelection;
     let count = 0;
     switch (type) {
@@ -199,9 +149,59 @@ export default function EmailsPage() {
         count = allUsers.length;
         return recipientLabels[segment] || segment;
     }
-  };
+  }, [composerState.recipientSelection]);
 
-  const getRecipientCount = () => {
+  const handleGenerateWithAi = useCallback(async () => {
+    setIsGenerating(true);
+    try {
+      const targetAudience = getRecipientSummary();
+      const result = await generateEmailCampaign({ ...aiFormState, targetAudience });
+      setComposerState(prev => ({ ...prev, subject: result.subject, body: result.body }));
+      setAiModalOpen(false);
+    } catch (error) {
+      console.error('Failed to generate email campaign:', error);
+       toast({
+        title: 'Generation Failed',
+        description: 'Could not generate email content with AI.',
+        variant: 'destructive',
+      });
+    }
+    setIsGenerating(false);
+  }, [aiFormState, getRecipientSummary, toast]);
+  
+  const handleOpenCreate = useCallback(() => {
+    setComposerState(getInitialComposerState());
+    setView('composer');
+  }, []);
+  
+  const handleOpenEdit = useCallback((campaign: Campaign) => {
+    // This is a simplified edit; a real app would need to parse the recipient string
+    // and map it back to the selection UI state.
+    setComposerState({
+      ...getInitialComposerState(),
+      id: campaign.id,
+      subject: campaign.subject,
+      body: campaign.body,
+      sendNow: campaign.status !== 'Scheduled',
+      scheduledAt: campaign.date !== 'N/A' ? new Date(campaign.date) : new Date(),
+    });
+    setView('composer');
+  }, []);
+  
+  const handleOpenDeleteDialog = useCallback((campaign: Campaign) => {
+    setCampaignToDelete(campaign);
+    setDeleteDialogOpen(true);
+  }, []);
+
+  const handleDeleteCampaign = useCallback(() => {
+    if (campaignToDelete) {
+      setCampaigns(campaigns.filter((c) => c.id !== campaignToDelete.id));
+      setDeleteDialogOpen(false);
+      setCampaignToDelete(null);
+    }
+  }, [campaignToDelete, campaigns]);
+
+  const getRecipientCount = useCallback(() => {
     const { type, segment, custom, manual } = composerState.recipientSelection;
      switch (type) {
       case 'custom':
@@ -214,9 +214,9 @@ export default function EmailsPage() {
       default:
         return 0;
     }
-  };
+  }, [composerState.recipientSelection]);
 
-  const handleSave = async (status: 'Draft' | 'Scheduled' | 'Sent') => {
+  const handleSave = useCallback(async (status: 'Draft' | 'Scheduled' | 'Sent') => {
     setIsSaving(true);
 
     if (status === 'Sent') {
@@ -257,19 +257,19 @@ export default function EmailsPage() {
         id: `camp_${Date.now()}`,
         ...campaignData,
       };
-      setCampaigns([newCampaign, ...campaigns]);
+      setCampaigns(c => [newCampaign, ...c]);
     }
     
     setIsSaving(false);
     setView('manager');
-  };
+  }, [composerState, campaigns, getRecipientCount, getRecipientSummary, toast]);
 
-  const recipientLabels: {[key: string]: string} = {
+  const recipientLabels: {[key: string]: string} = useMemo(() => ({
     "all": "All Users",
     "not-started": "Users who haven't started",
     "completed-exam": "Users with completed exams",
     "score-gt-80": "High-scoring users (>80%)",
-  };
+  }), []);
 
   const filteredUsers = useMemo(() => {
     return allUsers.filter(user => 
@@ -278,7 +278,7 @@ export default function EmailsPage() {
     );
   }, [userSearchTerm]);
 
-  const handleCustomUserSelect = (userId: string) => {
+  const handleCustomUserSelect = useCallback((userId: string) => {
     setComposerState(prev => {
       const currentSelection = prev.recipientSelection.custom;
       const newSelection = currentSelection.includes(userId)
@@ -292,7 +292,7 @@ export default function EmailsPage() {
         }
       };
     });
-  };
+  }, []);
   
   const currentStatus = statusConfig[emailServiceStatus];
 
