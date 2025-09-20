@@ -1,12 +1,5 @@
 'use client';
-import { useState, useEffect, useRef } from 'react';
-
-interface SpeechRecognitionHook {
-  listening: boolean;
-  transcript: string;
-  startListening: () => void;
-  stopListening: () => void;
-}
+import { useState, useCallback, useEffect, useRef } from 'react';
 
 // Add a global type for SpeechRecognition
 declare global {
@@ -16,9 +9,9 @@ declare global {
   }
 }
 
-export function useSpeechRecognition(): SpeechRecognitionHook {
-  const [listening, setListening] = useState(false);
+export const useSpeechRecognition = () => {
   const [transcript, setTranscript] = useState('');
+  const [isListening, setIsListening] = useState(false);
   const recognitionRef = useRef<any>(null);
 
   useEffect(() => {
@@ -27,82 +20,65 @@ export function useSpeechRecognition(): SpeechRecognitionHook {
       console.warn('Speech Recognition API is not supported in this browser.');
       return;
     }
-
+    
     const recognition = new SpeechRecognition();
     recognition.continuous = true;
-    recognition.interimResults = false;
+    recognition.interimResults = true;
     recognition.lang = 'en-US';
-
-    recognition.onstart = () => {
-      setListening(true);
-    };
-
-    recognition.onend = () => {
-      // It might stop due to silence, restart it if we want continuous listening.
-      if (recognitionRef.current && !recognitionRef.current.manualStop) {
-        try {
-          recognition.start();
-        } catch (error) {
-          // It might fail if it's already starting
-        }
-      } else {
-        setListening(false);
-      }
-    };
-
+      
     recognition.onresult = (event: any) => {
-      const lastResult = event.results[event.results.length - 1];
-      if (lastResult.isFinal) {
-        const command = lastResult[0].transcript.trim().toLowerCase();
-        setTranscript(command);
-
-        // Reset transcript after a short delay to allow command processing
-        setTimeout(() => setTranscript(''), 100);
+      let interimTranscript = '';
+      let finalTranscript = '';
+      
+      for (let i = event.resultIndex; i < event.results.length; i++) {
+        const transcriptPart = event.results[i][0].transcript;
+        if (event.results[i].isFinal) {
+          finalTranscript += transcriptPart + ' ';
+        } else {
+          interimTranscript += transcriptPart;
+        }
       }
+      
+      setTranscript(finalTranscript || interimTranscript);
     };
-
+      
     recognition.onerror = (event: any) => {
       console.error('Speech recognition error', event.error);
-       if (event.error === 'no-speech' || event.error === 'network') {
-         // Automatically restart on some common, non-critical errors.
-        if (recognitionRef.current && !recognitionRef.current.manualStop) {
-          setTimeout(() => {
-             try {
-              recognition.start();
-            } catch(e) {}
-          }, 100);
-        }
-      } else {
-         setListening(false);
-      }
+      setIsListening(false);
     };
-    
+      
+    recognition.onend = () => {
+      setIsListening(false);
+    };
+
     recognitionRef.current = recognition;
-    recognitionRef.current.manualStop = false;
 
     return () => {
-      recognitionRef.current.manualStop = true;
-      recognition.stop();
+      if (recognitionRef.current) {
+        recognitionRef.current.stop();
+      }
     };
   }, []);
 
-  const startListening = () => {
-    if (recognitionRef.current && !listening) {
-      try {
-        recognitionRef.current.manualStop = false;
-        recognitionRef.current.start();
-      } catch (error) {
-         console.error("Could not start recognition:", error);
-      }
+  const startListening = useCallback(() => {
+    if (recognitionRef.current && !isListening) {
+      setTranscript('');
+      recognitionRef.current.start();
+      setIsListening(true);
     }
-  };
+  }, [isListening]);
 
-  const stopListening = () => {
-    if (recognitionRef.current && listening) {
-      recognitionRef.current.manualStop = true;
+  const stopListening = useCallback(() => {
+    if (recognitionRef.current && isListening) {
       recognitionRef.current.stop();
+      setIsListening(false);
     }
-  };
+  }, [isListening]);
 
-  return { listening, transcript, startListening, stopListening };
-}
+  return {
+    transcript,
+    isListening,
+    startListening,
+    stopListening
+  };
+};

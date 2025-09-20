@@ -27,7 +27,7 @@ export default function ExamPage() {
   const [score, setScore] = useState({ correct: 0, total: 0 });
   const [answerState, setAnswerState] = useState<AnswerState>('idle');
 
-  const { listening, transcript, startListening, stopListening } = useSpeechRecognition();
+  const { isListening, transcript, startListening, stopListening } = useSpeechRecognition();
 
   useEffect(() => {
     if (transcript) {
@@ -36,14 +36,13 @@ export default function ExamPage() {
   }, [transcript]);
   
   useEffect(() => {
-    if (listening) {
+    if (isListening) {
       setAnswerState('listening');
     } else if (answerState === 'listening') {
       // If it was listening and now it's not, it's processing
-      setAnswerState('processing');
-      handleSubmit();
+      setAnswerState('idle'); // revert to idle, wait for submit
     }
-  }, [listening, answerState]); // Added answerState to dependency array
+  }, [isListening, answerState]);
 
   useEffect(() => {
     const shuffled = [...allQuestions].sort(() => 0.5 - Math.random());
@@ -68,6 +67,7 @@ export default function ExamPage() {
         return;
     };
     
+    stopListening();
     setExamState('feedback');
     setAnswerState('processing');
     setFeedback(null); // Clear previous feedback
@@ -121,7 +121,7 @@ export default function ExamPage() {
   };
   
   const handleMicClick = () => {
-    if (listening) {
+    if (isListening) {
       stopListening();
     } else {
       setUserAnswer(''); // Clear text when starting to listen
@@ -210,7 +210,7 @@ export default function ExamPage() {
               <p className="text-lg font-semibold min-h-[6rem] flex items-center">{currentQuestion.question}</p>
               <div className="relative">
                   <Textarea
-                      placeholder={listening ? "Listening..." : "Speak or type your answer here..."}
+                      placeholder={isListening ? "Listening..." : "Speak or type your answer here..."}
                       value={userAnswer}
                       onChange={(e) => setUserAnswer(e.target.value)}
                       disabled={examState === 'feedback'}
@@ -226,7 +226,7 @@ export default function ExamPage() {
                      {answerState === 'processing' ? <Loader2 className="h-5 w-5 animate-spin" /> : <Mic className="h-5 w-5"/>}
                   </Button>
               </div>
-              <Button onClick={handleSubmit} disabled={examState === 'feedback' || !userAnswer.trim() || listening} className="w-full">
+              <Button onClick={handleSubmit} disabled={examState === 'feedback' || !userAnswer.trim() || isListening} className="w-full">
                   {answerState === 'processing' ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Send className="mr-2 h-4 w-4" />}
                   Submit Answer
               </Button>

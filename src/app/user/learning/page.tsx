@@ -1,5 +1,5 @@
 'use client';
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { questions as allQuestions, Question } from '@/lib/data';
@@ -8,6 +8,8 @@ import { Play, Pause, SkipForward, SkipBack, Volume2, Loader2, Info, Mic } from 
 import { useSpeechRecognition } from '@/hooks/use-speech-recognition';
 import { cn } from '@/lib/utils';
 import { Badge } from '@/components/ui/badge';
+import _ from 'lodash';
+
 
 type LearningState = 'category_selection' | 'lesson';
 
@@ -22,12 +24,24 @@ export default function LearningPage() {
   const [loadingAudio, setLoadingAudio] = useState<'question' | 'answer' | null>(null);
   const audioCache = useRef<Record<string, { questionAudio: string; answerAudio: string }>>({});
 
-  const { listening, transcript, startListening, stopListening } = useSpeechRecognition();
+  const { isListening, transcript, startListening, stopListening } = useSpeechRecognition();
 
   const categories = [...new Set(allQuestions.map(q => q.category))];
 
   const currentQuestion: Question | undefined = questions[currentIndex];
 
+  const handleNext = useCallback(_.debounce(() => {
+    setCurrentIndex(i => (i + 1) % (questions.length || 1));
+  }, 300), [questions.length]);
+
+  const handlePrev = useCallback(_.debounce(() => {
+    setCurrentIndex(i => (i - 1 + (questions.length || 1)) % (questions.length || 1));
+  }, 300), [questions.length]);
+
+  const handleRepeat = useCallback(_.debounce(() => {
+    playAudio('question');
+  }, 300), [currentQuestion]);
+  
   useEffect(() => {
     if (transcript) {
       const command = transcript.toLowerCase().trim();
@@ -36,16 +50,15 @@ export default function LearningPage() {
       } else if (command.includes('back') || command.includes('previous')) {
         handlePrev();
       } else if (command.includes('replay') || command.includes('repeat')) {
-        playAudio('question');
+        handleRepeat();
       }
-      // The transcript should be cleared after a command is processed.
-      // This is managed inside the useSpeechRecognition hook.
     }
-  }, [transcript]);
+  }, [transcript, handleNext, handlePrev, handleRepeat]);
+
 
   useEffect(() => {
     // Continuous listening
-    if (!listening) {
+    if (!isListening) {
       startListening();
     }
     // Cleanup on unmount
@@ -55,7 +68,7 @@ export default function LearningPage() {
         currentAudio.pause();
       }
     };
-  }, [listening, startListening, stopListening, currentAudio]);
+  }, [isListening, startListening, stopListening, currentAudio]);
 
 
   useEffect(() => {
@@ -65,19 +78,6 @@ export default function LearningPage() {
     }
     setShowAnswer(false);
   }, [currentIndex, selectedCategory]);
-
-  useEffect(() => {
-    if (isPlaying && currentQuestion && !currentAudio) {
-        playAudio('question');
-    }
-  }, [isPlaying, currentIndex]);
-
-  const selectCategory = (category: string) => {
-    setSelectedCategory(category);
-    setQuestions(allQuestions.filter(q => q.category === category));
-    setLearningState('lesson');
-    setCurrentIndex(0);
-  };
 
   const playAudio = async (type: 'question' | 'answer') => {
     if (loadingAudio || !currentQuestion) return;
@@ -114,15 +114,11 @@ export default function LearningPage() {
     audio.play();
     setIsPlaying(true);
     audio.onended = () => {
-        if (type === 'question') {
-            playAudio('answer');
-        } else { // Answer finished
-            if (currentIndex < questions.length - 1) {
-                handleNext(true); // Move to the next and autoplay
-            } else {
-                setIsPlaying(false); // Stop playing at the end of the list
-            }
-        }
+      setIsPlaying(false);
+      // Optional: auto-play answer after question
+      // if (type === 'question') {
+      //   playAudio('answer');
+      // }
     };
   };
 
@@ -140,17 +136,14 @@ export default function LearningPage() {
     }
   };
 
-  const handleNext = (autoplay = false) => {
-    const nextIndex = (currentIndex + 1) % questions.length;
-    setCurrentIndex(nextIndex);
-    if(autoplay && isPlaying) {
-      // This will be picked up by the useEffect
-    }
+  const selectCategory = (category: string) => {
+    setSelectedCategory(category);
+    const categoryQuestions = allQuestions.filter(q => q.category === category);
+    setQuestions(categoryQuestions);
+    setLearningState('lesson');
+    setCurrentIndex(0);
   };
 
-  const handlePrev = () => {
-    setCurrentIndex((prev) => (prev - 1 + questions.length) % questions.length);
-  };
 
   if (learningState === 'category_selection') {
     return (
@@ -195,8 +188,12 @@ export default function LearningPage() {
                     </p>
                 </div>
                 <div className="flex items-center gap-2">
-                    <Mic className={cn("text-muted-foreground transition-colors", listening && "text-primary animate-pulse")} />
-                    <Button variant="outline" onClick={() => setLearningState('category_selection')}>Change Category</Button>
+                    <Mic className={cn("text-muted-foreground transition-colors", isListening && "text-primary animate-pulse")} />
+                    <Button variant="outline" onClick={() => {
+                        setLearningState('category_selection');
+                        if (currentAudio) currentAudio.pause();
+                        setIsPlaying(false);
+                    }}>Change Category</Button>
                 </div>
             </div>
         </CardHeader>
@@ -212,7 +209,7 @@ export default function LearningPage() {
           )}
 
           <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
-             <Button variant="outline" size="icon" onClick={() => handlePrev()} disabled={loadingAudio !== null}>
+             <Button variant="outline" size="icon" onClick={handlePrev} disabled={loadingAudio !== null}>
                 <SkipBack />
               </Button>
             <Button size="lg" onClick={handlePlayPause} disabled={loadingAudio === 'question' || loadingAudio === 'answer'}>
@@ -225,7 +222,7 @@ export default function LearningPage() {
               )}
                <span className="ml-2">{isPlaying ? 'Pause' : 'Play'}</span>
             </Button>
-            <Button variant="outline" size="icon" onClick={() => handleNext()} disabled={loadingAudio !== null}>
+            <Button variant="outline" size="icon" onClick={handleNext} disabled={loadingAudio !== null}>
               <SkipForward />
             </Button>
           </div>
