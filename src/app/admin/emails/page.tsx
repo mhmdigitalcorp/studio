@@ -45,6 +45,7 @@ import {
   generateEmailCampaign,
   GenerateEmailCampaignInput,
   GenerateEmailCampaignOutput,
+  sendCampaignEmail, // Import the new function
 } from '@/ai/flows/generate-email-campaigns';
 import { Switch } from '@/components/ui/switch';
 import {
@@ -642,40 +643,75 @@ export default function EmailsPage() {
     }
   }, [campaignToDelete, campaigns, toast]);
 
-  const getRecipientCount = useCallback(() => {
+  const getRecipientEmails = useCallback((): string[] => {
     const { type, segment, custom, manual } = composerState.recipientSelection;
     switch (type) {
       case 'custom':
-        return custom.length;
+        return allUsers.filter(u => custom.includes(u.id)).map(u => u.email);
       case 'manual':
-        return manual.split(',').filter(e => e.trim()).length;
+        return manual.split(',').map(e => e.trim()).filter(e => e);
       case 'segment':
-        return allUsers.length;
+        // This is a simplified example. A real app would have more complex segment logic.
+        if (segment === 'all') return allUsers.map(u => u.email);
+        if (segment === 'not-started') return allUsers.filter(u => u.progress === 0).map(u => u.email);
+        if (segment === 'completed-exam') return allUsers.filter(u => u.score > 0).map(u => u.email);
+        if (segment === 'score-gt-80') return allUsers.filter(u => u.score > 80).map(u => u.email);
+        return [];
       default:
-        return 0;
+        return [];
     }
-  }, [composerState.recipientSelection, allUsers.length]);
+  }, [composerState.recipientSelection, allUsers]);
 
   const handleSave = useCallback(
     async (status: 'Draft' | 'Scheduled' | 'Sent') => {
       setIsSaving(true);
-
+      
       if (status === 'Sent') {
-         if (!settings || !settings.provider || settings.provider === 'none') {
+        if (!settings || !settings.provider || settings.provider === 'none') {
+          toast({
+            title: 'Email Send Failed',
+            description: 'Email service is not configured. Please configure it in Settings.',
+            variant: 'destructive',
+          });
+          setIsSaving(false);
+          return;
+        }
+
+        const recipients = getRecipientEmails();
+        if (recipients.length === 0) {
            toast({
-             title: 'Email Send Failed',
-             description: 'Email service is not configured. Please configure it in Settings.',
-             variant: 'destructive',
-           });
+            title: 'No Recipients',
+            description: 'Please select at least one recipient to send the campaign.',
+            variant: 'destructive',
+          });
            setIsSaving(false);
            return;
-         }
-        // Simulate sending
-        await new Promise(resolve => setTimeout(resolve, 1500));
-        toast({
-          title: 'Email Sent Successfully!',
-          description: `Your campaign "${composerState.subject}" was sent to ${getRecipientCount()} recipient(s).`,
-        });
+        }
+
+        try {
+          const result = await sendCampaignEmail({
+            recipients,
+            subject: composerState.subject,
+            body: composerState.body,
+          });
+
+          if (result.success) {
+            toast({
+              title: 'Email Sent Successfully!',
+              description: `Your campaign "${composerState.subject}" was sent to ${recipients.length} recipient(s).`,
+            });
+          } else {
+            throw new Error(result.message);
+          }
+        } catch (error: any) {
+          toast({
+            title: 'Email Send Failed',
+            description: `An error occurred while sending the email: ${error.message}`,
+            variant: 'destructive',
+          });
+          setIsSaving(false);
+          return; // Stop execution if sending fails
+        }
       }
 
       const recipientsSummary = getRecipientSummary();
@@ -709,7 +745,7 @@ export default function EmailsPage() {
       setIsSaving(false);
       setView('manager');
     },
-    [composerState, campaigns, getRecipientCount, getRecipientSummary, toast, settings]
+    [composerState, campaigns, getRecipientEmails, getRecipientSummary, toast, settings]
   );
 
   const recipientLabels: { [key: string]: string } = useMemo(

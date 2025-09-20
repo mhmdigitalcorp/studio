@@ -2,15 +2,17 @@
 'use server';
 
 /**
- * @fileOverview AI-assisted email campaign generator for admin communication.
+ * @fileOverview AI-assisted email campaign generator and sender.
  *
  * - generateEmailCampaign - A function that generates email content for campaigns.
+ * - sendCampaignEmail - A function that sends the campaign to a list of recipients.
  * - GenerateEmailCampaignInput - The input type for the generateEmailCampaign function.
  * - GenerateEmailCampaignOutput - The return type for the generateEmailCampaign function.
  */
 
 import { ai } from '@/ai/genkit';
 import { z } from 'zod';
+import { sendEmail } from '@/services/email-service';
 
 const GenerateEmailCampaignInputSchema = z.object({
   emailType: z
@@ -71,4 +73,59 @@ const generateEmailCampaignFlow = ai.defineFlow(
     const { output } = await prompt(input);
     return output!;
   }
+);
+
+
+// New flow for sending the campaign email
+const SendCampaignEmailInputSchema = z.object({
+    recipients: z.array(z.string().email()),
+    subject: z.string(),
+    body: z.string(),
+});
+export type SendCampaignEmailInput = z.infer<typeof SendCampaignEmailInputSchema>;
+
+const SendCampaignEmailOutputSchema = z.object({
+    success: z.boolean(),
+    message: z.string(),
+});
+export type SendCampaignEmailOutput = z.infer<typeof SendCampaignEmailOutputSchema>;
+
+
+export async function sendCampaignEmail(input: SendCampaignEmailInput): Promise<SendCampaignEmailOutput> {
+    return sendCampaignEmailFlow(input);
+}
+
+const sendCampaignEmailFlow = ai.defineFlow(
+    {
+        name: 'sendCampaignEmailFlow',
+        inputSchema: SendCampaignEmailInputSchema,
+        outputSchema: SendCampaignEmailOutputSchema,
+    },
+    async ({ recipients, subject, body }) => {
+        try {
+            // In a real production app, you might use a bulk sending service or a queue.
+            // For now, we'll send emails individually.
+            const sendPromises = recipients.map(recipient => 
+                sendEmail({
+                    to: recipient,
+                    subject: subject,
+                    text: body, // For now, text and html are the same. A markdown-to-html converter would be better here.
+                    html: body,
+                })
+            );
+
+            await Promise.all(sendPromises);
+
+            return {
+                success: true,
+                message: `Successfully sent campaign to ${recipients.length} recipients.`,
+            };
+        } catch (error: any) {
+            console.error('Error in sendCampaignEmailFlow:', error);
+            return {
+                success: false,
+                message: `Failed to send campaign: ${error.message}`,
+            };
+        }
+    }
 );
