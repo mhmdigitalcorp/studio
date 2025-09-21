@@ -14,6 +14,8 @@ import { auth, db } from '@/lib/firebase';
 import { useRouter } from 'next/navigation';
 import { manageUser } from '@/ai/flows/manage-user';
 import { User as AppUser } from '@/lib/data';
+import { setCookie, deleteCookie } from 'cookies-next';
+
 
 interface User extends DocumentData {
   uid: string;
@@ -71,11 +73,11 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         await fetchUserData(user);
         // Set a cookie with the user's token for middleware to use
         const token = await user.getIdToken();
-        document.cookie = `firebaseIdToken=${token}; path=/; max-age=3600`; // Expires in 1 hour
+        setCookie('firebaseIdToken', token, { path: '/', maxAge: 3600 }); // Expires in 1 hour
       } else {
         setCurrentUser(null);
         // Clear the cookie on logout
-        document.cookie = 'firebaseIdToken=; path=/; max-age=0';
+        deleteCookie('firebaseIdToken', { path: '/' });
       }
       setLoading(false);
     });
@@ -141,14 +143,14 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const signIn = async (email: any, password: any) => {
     const userCredential = await signInWithEmailAndPassword(auth, email, password);
     const token = await userCredential.user.getIdToken();
-    document.cookie = `firebaseIdToken=${token}; path=/; max-age=3600`;
+    setCookie('firebaseIdToken', token, { path: '/', maxAge: 3600 });
     return userCredential;
   }
 
   const logOut = () => {
     return signOut(auth).then(() => {
       setCurrentUser(null);
-      document.cookie = 'firebaseIdToken=; path=/; max-age=0';
+      deleteCookie('firebaseIdToken', { path: '/' });
       router.push('/');
     });
   }

@@ -30,6 +30,20 @@ const nextConfig: NextConfig = {
       },
     ],
   },
+  experimental: {
+    serverComponentsExternalPackages: ['@genkit-ai/googleai', 'nodemailer', 'firebase-admin', 'wav'],
+  },
+  webpack: (config, { isServer }) => {
+    if (!isServer) {
+        // Exclude server-only modules from client-side bundles
+        config.resolve.fallback = {
+            ...config.resolve.fallback,
+            "firebase-admin": false,
+        };
+    }
+     config.externals.push('pino-pretty', 'lokijs', 'encoding');
+    return config;
+  },
 };
 
 export default nextConfig;

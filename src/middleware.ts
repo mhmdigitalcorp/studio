@@ -1,23 +1,7 @@
 // src/middleware.ts
 import { NextResponse, type NextRequest } from 'next/server';
-import { getAuth } from 'firebase-admin/auth';
-import { app } from '@/lib/firebase-admin';
 
-async function verifyToken(token: string) {
-  if (!app) {
-    console.error('Firebase Admin SDK not initialized.');
-    return null;
-  }
-  try {
-    const decodedToken = await getAuth(app).verifyIdToken(token);
-    return decodedToken;
-  } catch (error) {
-    console.warn('Invalid or expired token:', error);
-    return null;
-  }
-}
-
-export async function middleware(request: NextRequest) {
+export function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
   const protectedAdminRoutes = [
@@ -31,34 +15,19 @@ export async function middleware(request: NextRequest) {
   ];
 
   if (protectedAdminRoutes.some(p => pathname.startsWith(p))) {
-    const token = request.cookies.get('firebaseIdToken')?.value;
+    const tokenCookie = request.cookies.get('firebaseIdToken');
 
-    if (!token) {
+    if (!tokenCookie) {
       const loginUrl = new URL('/admin/auth/login', request.url);
       loginUrl.searchParams.set('redirect', pathname);
       return NextResponse.redirect(loginUrl);
     }
-
-    const decodedToken = await verifyToken(token);
-
-    if (!decodedToken) {
-      const loginUrl = new URL('/admin/auth/login', request.url);
-      loginUrl.searchParams.set('redirect', pathname);
-      return NextResponse.redirect(loginUrl);
-    }
-
-    if (decodedToken.role !== 'admin') {
-      // User is authenticated but not an admin, redirect to a dedicated "Unauthorized" page.
-      const unauthorizedUrl = new URL('/admin/unauthorized', request.url);
-      return NextResponse.redirect(unauthorizedUrl);
-    }
-
-    return NextResponse.next();
   }
 
   return NextResponse.next();
 }
 
 export const config = {
+  // Matcher ensures the middleware runs only on admin pages, excluding auth pages and assets
   matcher: ['/admin/:path*'],
 };
