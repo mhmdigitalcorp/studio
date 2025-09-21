@@ -1,10 +1,15 @@
-'use client';
 import { Toaster } from '@/components/ui/toaster';
 import './globals.css';
 import { cn } from '@/lib/utils';
 import { AuthProvider } from '@/context/AuthContext';
 import HydrationErrorBoundary from '@/components/HydrationErrorBoundary';
 import ClientOnly from '@/components/ClientOnly';
+import type { Metadata } from 'next';
+
+export const metadata: Metadata = {
+  title: 'LearnFlow - AI-Powered Learning',
+  description: 'The future of learning with AI-powered voice lessons and intelligent exams.',
+};
 
 export default function RootLayout({
   children,

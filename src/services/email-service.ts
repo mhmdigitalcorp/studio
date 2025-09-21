@@ -12,16 +12,13 @@ interface EmailOptions {
 }
 
 export async function sendEmail(options: EmailOptions) {
-  console.log('Fetching email configuration from Firestore...');
   const settingsDoc = await db.collection('settings').doc('app-config').get();
   
   if (!settingsDoc.exists) {
-    console.error('Email settings document not found in Firestore.');
     throw new Error('Email settings not found in Firestore.');
   }
   
   const config = settingsDoc.data();
-  console.log('Retrieved config from Firestore:', config); // <-- ADDED FOR DEBUGGING
 
   if (!config || !config.provider || config.provider === 'none') {
     throw new Error('Email provider is not configured.');
@@ -37,13 +34,11 @@ export async function sendEmail(options: EmailOptions) {
     const missingFields = requiredSmtpFields.filter(field => !config[field]);
     if (missingFields.length > 0) {
       const errorMessage = `Missing SMTP configuration fields: ${missingFields.join(', ')}`;
-      console.error(errorMessage);
       throw new Error(errorMessage);
     }
   } else if (config.provider === 'sendgrid') {
     if (!config.sendgridKey) {
        const errorMessage = 'SendGrid API key is missing.';
-       console.error(errorMessage);
        throw new Error(errorMessage);
     }
   }
@@ -84,9 +79,7 @@ export async function sendEmail(options: EmailOptions) {
   };
 
   try {
-    console.log('Attempting to send email with Nodemailer...');
     const info = await transporter.sendMail(mailOptions);
-    console.log('Email sent successfully. Response:', info.response);
     return info;
   } catch (error: any) {
     console.error('Nodemailer error:', error);
