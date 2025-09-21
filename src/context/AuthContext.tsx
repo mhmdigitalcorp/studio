@@ -69,8 +69,13 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     const unsubscribe = onAuthStateChanged(auth, async (user: FirebaseUser | null) => {
       if (user) {
         await fetchUserData(user);
+        // Set a cookie with the user's token for middleware to use
+        const token = await user.getIdToken();
+        document.cookie = `firebaseIdToken=${token}; path=/; max-age=3600`; // Expires in 1 hour
       } else {
         setCurrentUser(null);
+        // Clear the cookie on logout
+        document.cookie = 'firebaseIdToken=; path=/; max-age=0';
       }
       setLoading(false);
     });
@@ -133,13 +138,17 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     }
   };
   
-  const signIn = (email:any, password:any) => {
-      return signInWithEmailAndPassword(auth, email, password);
+  const signIn = async (email: any, password: any) => {
+    const userCredential = await signInWithEmailAndPassword(auth, email, password);
+    const token = await userCredential.user.getIdToken();
+    document.cookie = `firebaseIdToken=${token}; path=/; max-age=3600`;
+    return userCredential;
   }
 
   const logOut = () => {
     return signOut(auth).then(() => {
       setCurrentUser(null);
+      document.cookie = 'firebaseIdToken=; path=/; max-age=0';
       router.push('/');
     });
   }
