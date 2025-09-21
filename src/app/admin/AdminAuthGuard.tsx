@@ -1,4 +1,3 @@
-
 'use client';
 
 import { useAuth } from '@/context/AuthContext';
@@ -18,7 +17,7 @@ export default function AdminAuthGuard({
   const [isVerifying, setIsVerifying] = useState(true);
 
   useEffect(() => {
-    let isMounted = true; // Prevent state updates on unmounted component
+    let isMounted = true;
 
     const verifyAdmin = async () => {
       // If auth is still loading, wait.
@@ -37,14 +36,14 @@ export default function AdminAuthGuard({
       // If auth has loaded and there's no user, redirect to login.
       if (!currentUser) {
         router.replace('/admin/auth/login');
-        if (isMounted) setIsVerifying(false); // Stop verification
+        if (isMounted) setIsVerifying(false);
         return;
       }
 
       // If user is not an admin, redirect.
       if (currentUser.role !== 'admin') {
         router.replace('/admin/unauthorized');
-        if (isMounted) setIsVerifying(false); // Stop verification
+        if (isMounted) setIsVerifying(false);
         return;
       }
 
@@ -53,7 +52,7 @@ export default function AdminAuthGuard({
         const token = getCookie('firebaseIdToken');
         if (!token) {
           router.replace('/admin/auth/login');
-          if (isMounted) setIsVerifying(false); // Stop verification
+          if (isMounted) setIsVerifying(false);
           return;
         }
 
@@ -65,8 +64,12 @@ export default function AdminAuthGuard({
 
         if (response.status === 401) {
           router.replace('/admin/auth/login');
+          if (isMounted) setIsVerifying(false);
+          return;
         } else if (response.status === 403) {
           router.replace('/admin/unauthorized');
+          if (isMounted) setIsVerifying(false);
+          return;
         } else if (!response.ok) {
            throw new Error('Token verification failed');
         }
@@ -77,7 +80,7 @@ export default function AdminAuthGuard({
       } catch (error) {
         console.error('Admin verification error:', error);
         router.replace('/admin/auth/login');
-        if (isMounted) setIsVerifying(false); // Stop verification on error
+        if (isMounted) setIsVerifying(false);
       }
     };
 
@@ -89,15 +92,14 @@ export default function AdminAuthGuard({
 
   }, [currentUser, authLoading, router, pathname]);
 
-  // Show a loader while authentication state is being determined.
   if (isVerifying) {
     return (
       <div className="flex h-screen w-full items-center justify-center">
         <Loader2 className="h-8 w-8 animate-spin" />
+        <span className="ml-2">Verifying access...</span>
       </div>
     );
   }
   
-  // If verification is complete, render the children.
   return <>{children}</>;
 }
