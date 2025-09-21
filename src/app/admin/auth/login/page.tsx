@@ -104,6 +104,12 @@ export default function AdminLoginPage() {
             </Button>
           </div>
           </form>
+           <div className="mt-4 text-center text-sm">
+            Don&apos;t have an admin account?{' '}
+            <Link href="/admin/auth/signup" className="underline">
+              Sign up
+            </Link>
+          </div>
         </CardContent>
       </Card>
       

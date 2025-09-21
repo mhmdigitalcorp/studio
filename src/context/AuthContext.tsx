@@ -30,10 +30,17 @@ interface User extends DocumentData {
   avatar?: string;
 }
 
+interface SignUpCredentials {
+  email: string;
+  password: string;
+  name: string;
+  role?: 'user' | 'admin';
+}
+
 interface AuthContextType {
   currentUser: User | null;
   loading: boolean;
-  signUp: (credentials: { email: string; password: string; name: string; }) => Promise<any>;
+  signUp: (credentials: SignUpCredentials) => Promise<any>;
   signIn: (email: string, pass: string) => Promise<any>;
   logOut: () => Promise<any>;
   refreshUser: () => Promise<void>;
@@ -94,7 +101,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     }
   };
   
-  const signUp = async ({ email, password, name }: {email: string, password: string, name: string}) => {
+  const signUp = async ({ email, password, name, role = 'user' }: SignUpCredentials) => {
     try {
       const userCredential = await createUserWithEmailAndPassword(auth, email, password);
       
@@ -103,7 +110,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         name,
         email,
         status: 'Active',
-        role: 'user',
+        role,
         lastLogin: new Date().toISOString().split('T')[0],
         score: 0,
         progress: 0,
