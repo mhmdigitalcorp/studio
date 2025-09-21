@@ -18,26 +18,33 @@ export default function AdminAuthGuard({
   const [isVerifying, setIsVerifying] = useState(true);
 
   useEffect(() => {
-    // If auth is still loading, wait.
+    const isAuthRoute = pathname.startsWith('/admin/auth') || pathname === '/admin/unauthorized';
+    
+    // If we're on an auth route, no verification is needed. Let the page render.
+    if (isAuthRoute) {
+      setIsVerifying(false);
+      return;
+    }
+
+    // If auth is still loading from Firebase, wait.
     if (authLoading) {
       return;
     }
 
+    // If there's no user context, redirect to login immediately.
+    if (!currentUser) {
+      router.replace('/admin/auth/login');
+      return;
+    }
+
     const verifyAdmin = async () => {
-      // If client-side context says no user, redirect immediately.
-      if (!currentUser) {
-        router.replace('/admin/auth/login');
-        return;
-      }
-      
-      // If client-side context says user is not admin, redirect.
+      // If client context says user is not admin, redirect.
       if (currentUser.role !== 'admin') {
         router.replace('/admin/unauthorized');
         return;
       }
 
-      // For an extra layer of security, verify the token against a server endpoint.
-      // This protects against a stale client-side session.
+      // Final check: verify the token with the server to ensure session is valid.
       try {
         const token = getCookie('firebaseIdToken');
         if (!token) {
@@ -47,45 +54,39 @@ export default function AdminAuthGuard({
 
         const response = await fetch('/api/auth/verify-token', {
           method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
+          headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ token }),
         });
 
         if (response.status === 401) {
-           router.replace('/admin/auth/login');
-           return;
+          router.replace('/admin/auth/login');
+          return;
         }
 
         if (response.status === 403) {
-            router.replace('/admin/unauthorized');
-            return;
+          router.replace('/admin/unauthorized');
+          return;
         }
         
         if (!response.ok) {
            throw new Error('Token verification failed');
         }
         
+        // Success! Stop verifying.
+        setIsVerifying(false);
+        
       } catch (error) {
         console.error('Admin verification error:', error);
         router.replace('/admin/auth/login');
-        return;
-      } finally {
-        setIsVerifying(false);
       }
     };
 
-    // Don't run verification on auth pages themselves
-    if (!pathname.startsWith('/admin/auth') && !pathname.startsWith('/admin/unauthorized')) {
-        verifyAdmin();
-    } else {
-        setIsVerifying(false);
-    }
+    verifyAdmin();
 
   }, [currentUser, authLoading, router, pathname]);
 
-  if (authLoading || isVerifying) {
+  // Show a loader while authentication state is being determined.
+  if (isVerifying) {
     return (
       <div className="flex h-screen w-full items-center justify-center">
         <Loader2 className="h-8 w-8 animate-spin" />
@@ -93,16 +94,8 @@ export default function AdminAuthGuard({
     );
   }
 
-  // If on an auth page, just render children (the login form or unauthorized page)
-  if (pathname.startsWith('/admin/auth') || pathname.startsWith('/admin/unauthorized')) {
-    return <>{children}</>;
-  }
-  
-  // If user is verified as admin, render the admin layout
-  if (currentUser && currentUser.role === 'admin') {
-    return <>{children}</>;
-  }
-
-  // Fallback, should ideally be covered by redirects
-  return null;
+  // If verification is complete and we are still here, render the children.
+  // This covers both the protected admin pages for a verified user and the
+  // public auth pages (login, signup, unauthorized).
+  return <>{children}</>;
 }
