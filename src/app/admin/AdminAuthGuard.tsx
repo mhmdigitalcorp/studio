@@ -18,37 +18,42 @@ export default function AdminAuthGuard({
   const [isVerifying, setIsVerifying] = useState(true);
 
   useEffect(() => {
-    const isAuthRoute = pathname.startsWith('/admin/auth') || pathname === '/admin/unauthorized';
-    
-    // If we're on an auth route, no verification is needed. Let the page render.
-    if (isAuthRoute) {
-      setIsVerifying(false);
-      return;
-    }
-
-    // If auth is still loading from Firebase, wait.
-    if (authLoading) {
-      return;
-    }
-
-    // If there's no user context, redirect to login immediately.
-    if (!currentUser) {
-      router.replace('/admin/auth/login');
-      return;
-    }
+    let isMounted = true; // Prevent state updates on unmounted component
 
     const verifyAdmin = async () => {
-      // If client context says user is not admin, redirect.
-      if (currentUser.role !== 'admin') {
-        router.replace('/admin/unauthorized');
+      // If auth is still loading, wait.
+      if (authLoading) {
+        return;
+      }
+      
+      const isAuthRoute = pathname.startsWith('/admin/auth') || pathname === '/admin/unauthorized';
+
+      // On public auth routes, allow access immediately.
+      if (isAuthRoute) {
+        if (isMounted) setIsVerifying(false);
         return;
       }
 
-      // Final check: verify the token with the server to ensure session is valid.
+      // If auth has loaded and there's no user, redirect to login.
+      if (!currentUser) {
+        router.replace('/admin/auth/login');
+        if (isMounted) setIsVerifying(false); // Stop verification
+        return;
+      }
+
+      // If user is not an admin, redirect.
+      if (currentUser.role !== 'admin') {
+        router.replace('/admin/unauthorized');
+        if (isMounted) setIsVerifying(false); // Stop verification
+        return;
+      }
+
+      // Final check: verify the token with the server.
       try {
         const token = getCookie('firebaseIdToken');
         if (!token) {
           router.replace('/admin/auth/login');
+          if (isMounted) setIsVerifying(false); // Stop verification
           return;
         }
 
@@ -60,28 +65,27 @@ export default function AdminAuthGuard({
 
         if (response.status === 401) {
           router.replace('/admin/auth/login');
-          return;
-        }
-
-        if (response.status === 403) {
+        } else if (response.status === 403) {
           router.replace('/admin/unauthorized');
-          return;
-        }
-        
-        if (!response.ok) {
+        } else if (!response.ok) {
            throw new Error('Token verification failed');
         }
         
-        // Success! Stop verifying.
-        setIsVerifying(false);
-        
+        // If we reach here, verification is successful.
+        if (isMounted) setIsVerifying(false);
+
       } catch (error) {
         console.error('Admin verification error:', error);
         router.replace('/admin/auth/login');
+        if (isMounted) setIsVerifying(false); // Stop verification on error
       }
     };
 
     verifyAdmin();
+
+    return () => {
+      isMounted = false;
+    };
 
   }, [currentUser, authLoading, router, pathname]);
 
@@ -93,9 +97,7 @@ export default function AdminAuthGuard({
       </div>
     );
   }
-
-  // If verification is complete and we are still here, render the children.
-  // This covers both the protected admin pages for a verified user and the
-  // public auth pages (login, signup, unauthorized).
+  
+  // If verification is complete, render the children.
   return <>{children}</>;
 }
