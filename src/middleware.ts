@@ -4,6 +4,10 @@ import { getAuth } from 'firebase-admin/auth';
 import { app } from '@/lib/firebase-admin';
 
 async function verifyToken(token: string) {
+  if (!app) {
+    console.error('Firebase Admin SDK not initialized.');
+    return null;
+  }
   try {
     const decodedToken = await getAuth(app).verifyIdToken(token);
     return decodedToken;
@@ -16,33 +20,39 @@ async function verifyToken(token: string) {
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
-  // We only want to protect routes under /admin, excluding the auth pages
-  if (pathname.startsWith('/admin') && !pathname.startsWith('/admin/auth')) {
+  const protectedAdminRoutes = [
+    '/admin/dashboard',
+    '/admin/questions',
+    '/admin/users',
+    '/admin/emails',
+    '/admin/todos',
+    '/admin/settings',
+    '/admin/profile',
+  ];
+
+  if (protectedAdminRoutes.some(p => pathname.startsWith(p))) {
     const token = request.cookies.get('firebaseIdToken')?.value;
 
     if (!token) {
-      // If no token, redirect to the admin login page
       const loginUrl = new URL('/admin/auth/login', request.url);
+      loginUrl.searchParams.set('redirect', pathname);
       return NextResponse.redirect(loginUrl);
     }
 
     const decodedToken = await verifyToken(token);
 
     if (!decodedToken) {
-      // If token is invalid, redirect to login
       const loginUrl = new URL('/admin/auth/login', request.url);
+      loginUrl.searchParams.set('redirect', pathname);
       return NextResponse.redirect(loginUrl);
     }
 
-    // Check for admin role claim. In a real app, this should be set during user creation
-    // or via a custom claims function. For this app, we check the 'role' field.
     if (decodedToken.role !== 'admin') {
-      // If user is not an admin, redirect them away from the admin portal
-      const userUrl = new URL('/user/learning', request.url);
-      return NextResponse.redirect(userUrl);
+      // User is authenticated but not an admin, redirect to a dedicated "Unauthorized" page.
+      const unauthorizedUrl = new URL('/admin/unauthorized', request.url);
+      return NextResponse.redirect(unauthorizedUrl);
     }
 
-    // If all checks pass, allow the request to proceed
     return NextResponse.next();
   }
 
