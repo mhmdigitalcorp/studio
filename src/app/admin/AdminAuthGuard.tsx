@@ -1,3 +1,4 @@
+
 'use client';
 
 import { useAuth } from '@/context/AuthContext';
@@ -45,9 +46,11 @@ export default function AdminAuthGuard({
         }
 
         const response = await fetch('/api/auth/verify-token', {
+          method: 'POST',
           headers: {
-            Authorization: `Bearer ${token}`,
+            'Content-Type': 'application/json',
           },
+          body: JSON.stringify({ token }),
         });
 
         if (response.status === 401) {
@@ -74,7 +77,7 @@ export default function AdminAuthGuard({
     };
 
     // Don't run verification on auth pages themselves
-    if (!pathname.startsWith('/admin/auth')) {
+    if (!pathname.startsWith('/admin/auth') && !pathname.startsWith('/admin/unauthorized')) {
         verifyAdmin();
     } else {
         setIsVerifying(false);
@@ -90,8 +93,8 @@ export default function AdminAuthGuard({
     );
   }
 
-  // If on an auth page, just render children (the login form)
-  if (pathname.startsWith('/admin/auth')) {
+  // If on an auth page, just render children (the login form or unauthorized page)
+  if (pathname.startsWith('/admin/auth') || pathname.startsWith('/admin/unauthorized')) {
     return <>{children}</>;
   }
   

@@ -1,34 +1,37 @@
-import { NextResponse } from 'next/server';
-import { getAuth } from 'firebase-admin/auth';
-import { app } from '@/lib/firebase-admin';
-import { doc, getDoc } from 'firebase-admin/firestore';
-import { db } from '@/lib/firebase-admin';
 
-export async function GET(request: Request) {
+import { NextRequest, NextResponse } from 'next/server';
+import { adminAuth, db } from '@/lib/firebase-admin';
+
+export async function POST(request: NextRequest) {
   try {
-    const authHeader = request.headers.get('Authorization');
-    if (!authHeader || !authHeader.startsWith('Bearer ')) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
-
-    const token = authHeader.split('Bearer ')[1];
+    const { token } = await request.json();
     if (!token) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+      return NextResponse.json({ success: false, error: 'Token not provided' }, { status: 400 });
     }
-
-    const decodedToken = await getAuth(app).verifyIdToken(token);
+    
+    // Verify the token using Firebase Admin
+    const decodedToken = await adminAuth.verifyIdToken(token);
     
     // Additional check for role from Firestore
-    const userDocRef = doc(db, 'users', decodedToken.uid);
+    const userDocRef = db.collection('users').doc(decodedToken.uid);
     const userDoc = await userDocRef.get();
 
     if (!userDoc.exists() || userDoc.data()?.role !== 'admin') {
        return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
 
-    return NextResponse.json({ message: 'Success', uid: decodedToken.uid, role: userDoc.data()?.role }, { status: 200 });
+    return NextResponse.json({ 
+      success: true, 
+      uid: decodedToken.uid,
+      email: decodedToken.email,
+      role: userDoc.data()?.role
+    });
+
   } catch (error) {
     console.error('Token verification error:', error);
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    return NextResponse.json(
+      { success: false, error: 'Invalid token' },
+      { status: 401 }
+    );
   }
 }
